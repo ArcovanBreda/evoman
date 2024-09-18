@@ -81,38 +81,41 @@ class Specialist():
             total_weights = np.random.uniform(self.lowerbound, self.upperbound, (self.population_size, self.n_vars))
         
         if self.mutation_type == 'uncorrelated':
-            sigmas = np.ones((self.population_size, self.mutation_stepsize))
+            sigmas = np.ones((self.population_size, self.mutation_stepsize)) * self.s_init
 
             return np.hstack((total_weights, sigmas))
 
         return total_weights
 
 
-    def mutation(self, child, p_mutation=0.2, threshold=0.01):
-        """Expects a single child as input.
+    def mutation(self, child, p_mutation=0.2):
+        """Expects a single child as input and mutates it."""
+        if np.random.uniform() > p_mutation:
+            return child
 
-        threshold param is arbitrarily set for now #TODO    
-        """
         if self.mutation_type == 'uncorrelated':
             n = self.n_vars - self.mutation_stepsize
             if self.mutation_stepsize == 1:
-                # always update sigma
-                sigma_prime = child[-1] * np.exp(np.random.normal(0, 1 / np.sqrt(n)))
-                child[-1] = threshold if sigma_prime < threshold else sigma_prime
+                # update sigma
+                tau = 1 / np.sqrt(n)
+                sigma_prime = child[-1] * np.exp(np.random.normal(0, tau))
+                sigma_prime = np.maximum(sigma_prime, self.mutation_threshold)
 
                 # update child
-                child_mutated = [i + child[-1] * np.random.normal(0, 1) if np.random.uniform() <= p_mutation else i for i in range(n)]
-                child_mutated += [child[-1]]
+                mutations = np.random.normal(0, sigma_prime, size=n)
+                child_mutated = (child[:n] + mutations).tolist
+                child_mutated.append(sigma_prime)
             elif self.mutation_stepsize == n:
-                # always update sigmas
+                # update sigmas
                 tau_prime = 1 / np.sqrt(2 * n)
                 tau = 1 / np.sqrt(2 * np.sqrt(n))
-                child[n:] = child[n:] * np.exp(tau_prime * np.random.normal(0, 1) + tau * np.random.normal(0, 1, size=(n)))
-                child[np.where(child[n:] < threshold)] = threshold
+                sigma_prime = child[n:] * np.exp(np.random.normal(0, tau_prime) + np.random.normal(0, tau, size=n))
+                sigma_prime = np.maximum(sigma_prime, self.mutation_threshold)
 
                 # update child
-                child_mutated = [i + child[i + n] * np.random.normal(0, 1) if np.random.uniform() <= p_mutation else i for i in range(n)]
-                child_mutated += list(child[n:])
+                mutations = np.random.normal(0, sigma_prime)
+                child_mutated = (child[:n] + mutations).tolist()
+                child_mutated += sigma_prime.tolist()
             else:
                 raise NotImplementedError #TODO everything for k, 1 < k < n should probably contain mapping from sigma to alleles 
         elif self.mutation_type == 'correlated':
@@ -121,6 +124,7 @@ class Specialist():
             # to check old behavior
             child_mutated = [i + np.random.normal(0, 1) if np.random.uniform() <= p_mutation else i for i in range(len(child))]
 
+        child_mutated = np.clip(child_mutated, self.lowerbound, self.upperbound)
         return child_mutated
 
 
@@ -278,6 +282,8 @@ class Specialist():
         parser.add_argument('-k', '--kaiming', action="store_true", help='Use Kaiming initialization of NN weights')
         parser.add_argument('-m', '--mutation', default='uncorrelated', choices=['uncorrelated', 'correlated', 'addition'])
         parser.add_argument('-ms', '--mutation_stepsize', type=int, default=0)
+        parser.add_argument('-mt', '--mutation_threshold', type=float, default=0.01, help='epsilon_0 for uncorrelated mutation')
+        parser.add_argument('-s', '--sigma_init', type=float, default=0, help='Init value for sigma(s) added to genes')
 
         args = parser.parse_args()
         self.population_size = args.population_size
@@ -288,6 +294,8 @@ class Specialist():
         self.kaiming = args.kaiming
         self.mutation_type = args.mutation
         self.mutation_stepsize = args.mutation_stepsize
+        self.mutation_threshold = args.mutation_threshold
+        self.s_init = args.sigma_init
 
         # usage check
         if self.mutation_type == 'uncorrelated' and self.mutation_stepsize < 1:
@@ -304,6 +312,8 @@ class Specialist():
 
         if self.mutation_type == 'uncorrelated':
             self.experiment_name += f'_mutationstepsize={self.mutation_stepsize}'
+            self.experiment_name += f'_mutationthreshold={self.mutation_threshold}'
+            self.experiment_name += f'_sinit={self.s_init}'
 
         if self.kaiming:
             self.experiment_name += f'_init=kaiming'
