@@ -224,22 +224,44 @@ class Specialist():
 
     def parse_args(self):
         parser = argparse.ArgumentParser()
-        parser.add_argument('-exp', '--experiment_name', type=str, default='experiments/optimization_test', help='Name of experiment')
+        parser.add_argument('-exp', '--experiment_name', type=str, default='optimization_test', help='Name of experiment')
         parser.add_argument('-ps', '--population_size', type=int, default=100, help='Size of the population')
         parser.add_argument('-tg','--total_generations', type=int, default=100, help='Number of generations to run for')
         parser.add_argument('-n', '--n_hidden_neurons', type=int, default=10, help='Hidden layer size')
         parser.add_argument('-u', '--upperbound', type=int, default=1)
         parser.add_argument('-l', '--lowerbound', type=int, default=-1)
         parser.add_argument('-k', '--kaiming', action="store_true", help='Use Kaiming initialization of NN weights')
+        parser.add_argument('-m', '--mutation', default='uncorrelated', choices=['swap', 'addition', 'uncorrelated', 'correlated'])
+        parser.add_argument('-ms', '--mutation_stepsize', type=int, default=1)
 
         args = parser.parse_args()
         self.population_size = args.population_size
         self.total_generations = args.total_generations
-        self.experiment_name = args.experiment_name
         self.n_hidden_neurons = args.n_hidden_neurons
         self.upperbound = args.upperbound
         self.lowerbound = args.lowerbound
         self.kaiming = args.kaiming
+        self.mutation_type = args.mutation
+        self.mutation_stepsize = args.mutation_stepsize
+
+        if self.mutation_stepsize < 1:
+            parser.error("--mutation_stepsize must be >= 1 for uncorrelated mutation")
+
+        self.experiment_name = 'experiments/' + args.experiment_name
+        self.experiment_name += f'_popusize={self.population_size}'
+        self.experiment_name += f'_gens={self.total_generations}'
+        self.experiment_name += f'_hiddensize={self.n_hidden_neurons}'
+        self.experiment_name += f'_u={self.upperbound}'
+        self.experiment_name += f'_l={self.lowerbound}'
+        self.experiment_name += f'_mutationtype={self.mutation_type}'
+
+        if self.mutation_type == 'uncorrelated':
+            self.experiment_name += f'_mutationstepsize={self.mutation_stepsize}'
+
+        if self.kaiming:
+            self.experiment_name += f'_init=kaiming'
+        else:
+            self.experiment_name += f'_init=random'
 
         return 
 
