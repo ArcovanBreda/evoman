@@ -3,6 +3,7 @@ import argparse
 
 from evoman.environment import Environment
 from demo_controller import player_controller
+from uncorrelated_controller import uncorrelated_controller
 
 # imports other libs
 import numpy as np
@@ -36,53 +37,78 @@ class Specialist():
         if not os.path.exists(self.experiment_name):
             os.makedirs(self.experiment_name)
 
+        if self.mutation_type == 'uncorrelated':
+            controller = uncorrelated_controller(self.n_hidden_neurons, self.mutation_stepsize)
+        else:
+            controller = player_controller(self.n_hidden_neurons)
+        
+        self.mutation_stepsize
         self.env = Environment(experiment_name=self.experiment_name,
                     enemies=[2],
                     playermode="ai",
-                    player_controller=player_controller(self.n_hidden_neurons), # you  can insert your own controller here
+                    player_controller=controller, # you  can insert your own controller here
                     enemymode="static",
                     level=2,
                     speed="fastest",
                     visuals=False)
-        self.n_vars = (self.env.get_num_sensors()+1)*self.n_hidden_neurons + (self.n_hidden_neurons+1)*5
+        self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5
+
 
     def simulation(self, neuron_values):
         f, p, e, t = self.env.play(pcont=neuron_values)
         return f
 
+
     def fitness_eval(self, population):
         return np.array([simulation(self.env, individual) for individual in population])
+
 
     def initialize(self):
         if self.kaiming:
             n_actions = 5
-            n_inputs = 20
+            n_inputs = 20 #TODO these are hardcoded for now
             bias1 = np.zeros((self.population_size, self.n_hidden_neurons))
             bias2 = np.zeros((self.population_size, n_actions))
 
             limit1 = np.sqrt(1 / float(n_inputs))
             limit2 = np.sqrt(2 / float(self.n_hidden_neurons))
-
+            print("Limits: ", limit1, limit2) #TODO remove later
             weights1 = np.random.normal(0.0, limit1, size=(self.population_size, n_inputs * self.n_hidden_neurons))
             weights2 = np.random.normal(0.0, limit2, size=(self.population_size, self.n_hidden_neurons * n_actions))
+            #TODO should self.lowerbound and self.upperbound be adjusted here?
 
-            return np.hstack((bias1, weights1, bias2, weights2))
+            total_weights = np.hstack((bias1, weights1, bias2, weights2))
+        else:
+            total_weights = np.random.uniform(self.lowerbound, self.upperbound, (self.population_size, self.n_vars))
+        
+        if self.mutation_type == 'uncorrelated':
+            sigmas = np.ones((self.population_size, self.mutation_stepsize))
 
-        return np.random.uniform(self.lowerbound,
-                                self.upperbound,
-                                (self.population_size, self.n_vars))
+            return np.hstack((total_weights, sigmas))
+
+        return total_weights
+
 
     def mutation(self, child, p_mutation=0.2):
+        #TODO should get the whole child as input and then loop through each allele for ease
 
-        if np.random.uniform() > p_mutation:
-            #no mutation
-            return child
-        else:
+        for i in range(0,len(child)):
+            if np.random.uniform() > p_mutation:
+                #no mutation
+                continue
+            elif self.mutation_type == 'uncorrelated':
+                raise NotImplementedError #TODO probably better to change the order... as i need to separate the sigmas
+            elif self.mutation_type == 'correlated':
+                raise NotImplementedError
+
+        if self.mutation_type == 'swap' and np.random.uniform() > p_mutation:
             child = np.array(child)
             swap1, swap2 = np.random.choice(np.arange(1,10), size=2)
             child[[swap1, swap2]] = child[[swap2, swap1]]
             child_mutated = list(child)
+
         return child_mutated
+
 
     def limits(self, x):
 
@@ -92,6 +118,7 @@ class Specialist():
             return self.lowerbound
         else:
             return x
+
 
     def tournament(self, pop):
         c1 =  np.random.randint(0,pop.shape[0], 1)
@@ -105,7 +132,8 @@ class Specialist():
         else:
             return pop[c2][0]
 
-    def crossover(self, pop, p_mutation):
+
+    def crossover(self, pop, p_mutation, sigmas=None):
 
         total_offspring = np.zeros((0,self.n_vars))
 
@@ -113,24 +141,26 @@ class Specialist():
             p1 = self.tournament(pop)
             p2 = self.tournament(pop)
 
-            n_offspring = np.random.randint(1,3+1, 1)[0]
-            offspring = np.zeros( (n_offspring, self.n_vars) )
+            n_offspring = np.random.randint(1, 3 + 1, 1)[0]
+            offspring = np.zeros((n_offspring, self.n_vars))
 
-            for f in range(0,n_offspring):
+            for f in range(0, n_offspring):
 
                 cross_prop = np.random.uniform(0,1)
                 offspring[f] = p1*cross_prop+p2*(1-cross_prop)
 
                 # mutation
-                for i in range(0,len(offspring[f])):
-                    if np.random.uniform(0 ,1)<=p_mutation:
-                        offspring[f][i] =   offspring[f][i]+np.random.normal(0, 1)
+                offspring[f] = self.mutation(offspring[f], p_mutation)
+                # for i in range(0,len(offspring[f])):
+                    # if np.random.uniform(0 ,1)<=p_mutation: #TODO need to change here to self.mutation
+                        # offspring[f][i] =   offspring[f][i]+np.random.normal(0, 1)
 
                 offspring[f] = np.array(list(map(lambda y: self.limits(y), offspring[f])))
 
                 total_offspring = np.vstack((total_offspring, offspring[f]))
 
         return total_offspring
+
 
     def normalize(self, pop, fit):
 
@@ -141,6 +171,7 @@ class Specialist():
         if x_norm <= 0:
             x_norm = 0.0000000001
         return x_norm
+
 
     def selection(self, new_population, new_fitness_population):
         # TODO: find a better metric
@@ -163,8 +194,7 @@ class Specialist():
         chosen = np.random.choice(new_population.shape[0], self.population_size , p=probs, replace=False)
         # print(chosen)
         chosen = np.append(chosen[1:],np.argmax(new_fitness_population))
-        # print(chosen)
-        # print(chosen.shape)
+        # print("Chosen", chosen, chosen.shape)
         pop = new_population[chosen]
         fit_pop = new_fitness_population[chosen]
 
@@ -222,9 +252,10 @@ class Specialist():
             self.env.update_solutions(solutions)
             self.env.save_state()
 
+
     def parse_args(self):
         parser = argparse.ArgumentParser()
-        parser.add_argument('-exp', '--experiment_name', type=str, default='optimization_test', help='Name of experiment')
+        parser.add_argument('-exp', '--experiment_name', type=str, default='test', help='Name of experiment')
         parser.add_argument('-ps', '--population_size', type=int, default=100, help='Size of the population')
         parser.add_argument('-tg','--total_generations', type=int, default=100, help='Number of generations to run for')
         parser.add_argument('-n', '--n_hidden_neurons', type=int, default=10, help='Hidden layer size')
