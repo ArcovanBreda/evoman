@@ -12,7 +12,7 @@ class uncorrelated_controller(Controller):
 		self.n_hidden = [_n_hidden]
 		self.stepsize = stepsize
 
-	def set(self,controller, n_inputs):
+	def set(self, controller, n_inputs):
 		# Number of hidden neurons
 
 		if self.n_hidden[0] > 0:
@@ -26,7 +26,8 @@ class uncorrelated_controller(Controller):
 
 			# Preparing the weights and biases from the controller of layer 2
 			self.bias2 = controller[weights1_slice:weights1_slice + 5].reshape(1, 5)
-			self.weights2 = controller[weights1_slice + 5:len(controller) - self.stepsize + 1].reshape((self.n_hidden[0], 5))
+			self.weights2 = controller[weights1_slice + 5:len(controller) - self.stepsize].reshape((self.n_hidden[0], 5))
+			# print("SHAPE TEST: ", controller.shape, self.weights1.shape, self.bias1.shape, self.weights2.shape, self.bias2.shape) #TODO correct
 
 	def control(self, inputs, controller):
 		# Normalises the input using min-max scaling

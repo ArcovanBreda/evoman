@@ -42,7 +42,6 @@ class Specialist():
         else:
             controller = player_controller(self.n_hidden_neurons)
         
-        self.mutation_stepsize
         self.env = Environment(experiment_name=self.experiment_name,
                     enemies=[2],
                     playermode="ai",
@@ -51,7 +50,7 @@ class Specialist():
                     level=2,
                     speed="fastest",
                     visuals=False)
-        self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5
+        self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5 + self.mutation_stepsize
 
 
     def simulation(self, neuron_values):
@@ -101,7 +100,7 @@ class Specialist():
             elif self.mutation_type == 'correlated':
                 raise NotImplementedError
 
-        if self.mutation_type == 'swap' and np.random.uniform() > p_mutation:
+        if self.mutation_type == 'swap' and np.random.uniform() > p_mutation: #idk why this one is an option tho
             child = np.array(child)
             swap1, swap2 = np.random.choice(np.arange(1,10), size=2)
             child[[swap1, swap2]] = child[[swap2, swap1]]
@@ -263,7 +262,7 @@ class Specialist():
         parser.add_argument('-l', '--lowerbound', type=int, default=-1)
         parser.add_argument('-k', '--kaiming', action="store_true", help='Use Kaiming initialization of NN weights')
         parser.add_argument('-m', '--mutation', default='uncorrelated', choices=['swap', 'addition', 'uncorrelated', 'correlated'])
-        parser.add_argument('-ms', '--mutation_stepsize', type=int, default=1)
+        parser.add_argument('-ms', '--mutation_stepsize', type=int, default=0)
 
         args = parser.parse_args()
         self.population_size = args.population_size
@@ -275,7 +274,7 @@ class Specialist():
         self.mutation_type = args.mutation
         self.mutation_stepsize = args.mutation_stepsize
 
-        if self.mutation_stepsize < 1:
+        if self.mutation_type == 'uncorrelated' and self.mutation_stepsize < 1:
             parser.error("--mutation_stepsize must be >= 1 for uncorrelated mutation")
 
         self.experiment_name = 'experiments/' + args.experiment_name
