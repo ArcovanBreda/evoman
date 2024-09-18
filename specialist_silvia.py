@@ -88,23 +88,38 @@ class Specialist():
         return total_weights
 
 
-    def mutation(self, child, p_mutation=0.2):
-        #TODO should get the whole child as input and then loop through each allele for ease
+    def mutation(self, child, p_mutation=0.2, threshold=0.01):
+        """Expects a single child as input.
 
-        for i in range(0,len(child)):
-            if np.random.uniform() > p_mutation:
-                #no mutation
-                continue
-            elif self.mutation_type == 'uncorrelated':
-                raise NotImplementedError #TODO probably better to change the order... as i need to separate the sigmas
-            elif self.mutation_type == 'correlated':
-                raise NotImplementedError
+        threshold param is arbitrarily set for now #TODO    
+        """
+        if self.mutation_type == 'uncorrelated':
+            n = self.n_vars - self.mutation_stepsize
+            if self.mutation_stepsize == 1:
+                # always update sigma
+                sigma_prime = child[-1] * np.exp(np.random.normal(0, 1 / np.sqrt(n)))
+                child[-1] = threshold if sigma_prime < threshold else sigma_prime
 
-        if self.mutation_type == 'swap' and np.random.uniform() > p_mutation: #idk why this one is an option tho
-            child = np.array(child)
-            swap1, swap2 = np.random.choice(np.arange(1,10), size=2)
-            child[[swap1, swap2]] = child[[swap2, swap1]]
-            child_mutated = list(child)
+                # update child
+                child_mutated = [i + child[-1] * np.random.normal(0, 1) if np.random.uniform() <= p_mutation else i for i in range(n)]
+                child_mutated += [child[-1]]
+            elif self.mutation_stepsize == n:
+                # always update sigmas
+                tau_prime = 1 / np.sqrt(2 * n)
+                tau = 1 / np.sqrt(2 * np.sqrt(n))
+                child[n:] = child[n:] * np.exp(tau_prime * np.random.normal(0, 1) + tau * np.random.normal(0, 1, size=(n)))
+                child[np.where(child[n:] < threshold)] = threshold
+
+                # update child
+                child_mutated = [i + child[i + n] * np.random.normal(0, 1) if np.random.uniform() <= p_mutation else i for i in range(n)]
+                child_mutated += list(child[n:])
+            else:
+                raise NotImplementedError #TODO everything for k, 1 < k < n should probably contain mapping from sigma to alleles 
+        elif self.mutation_type == 'correlated':
+            raise NotImplementedError
+        elif self.mutation_type == 'addition':
+            # to check old behavior
+            child_mutated = [i + np.random.normal(0, 1) if np.random.uniform() <= p_mutation else i for i in range(len(child))]
 
         return child_mutated
 
@@ -151,7 +166,7 @@ class Specialist():
                 # mutation
                 offspring[f] = self.mutation(offspring[f], p_mutation)
                 # for i in range(0,len(offspring[f])):
-                    # if np.random.uniform(0 ,1)<=p_mutation: #TODO need to change here to self.mutation
+                    # if np.random.uniform(0 ,1)<=p_mutation:
                         # offspring[f][i] =   offspring[f][i]+np.random.normal(0, 1)
 
                 offspring[f] = np.array(list(map(lambda y: self.limits(y), offspring[f])))
@@ -261,7 +276,7 @@ class Specialist():
         parser.add_argument('-u', '--upperbound', type=int, default=1)
         parser.add_argument('-l', '--lowerbound', type=int, default=-1)
         parser.add_argument('-k', '--kaiming', action="store_true", help='Use Kaiming initialization of NN weights')
-        parser.add_argument('-m', '--mutation', default='uncorrelated', choices=['swap', 'addition', 'uncorrelated', 'correlated'])
+        parser.add_argument('-m', '--mutation', default='uncorrelated', choices=['uncorrelated', 'correlated', 'addition'])
         parser.add_argument('-ms', '--mutation_stepsize', type=int, default=0)
 
         args = parser.parse_args()
@@ -274,9 +289,11 @@ class Specialist():
         self.mutation_type = args.mutation
         self.mutation_stepsize = args.mutation_stepsize
 
+        # usage check
         if self.mutation_type == 'uncorrelated' and self.mutation_stepsize < 1:
             parser.error("--mutation_stepsize must be >= 1 for uncorrelated mutation")
 
+        # file name generation
         self.experiment_name = 'experiments/' + args.experiment_name
         self.experiment_name += f'_popusize={self.population_size}'
         self.experiment_name += f'_gens={self.total_generations}'
