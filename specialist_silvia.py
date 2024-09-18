@@ -103,7 +103,7 @@ class Specialist():
 
                 # update child
                 mutations = np.random.normal(0, sigma_prime, size=n)
-                child_mutated = (child[:n] + mutations).tolist
+                child_mutated = (child[:n] + mutations).tolist()
                 child_mutated.append(sigma_prime)
             elif self.mutation_stepsize == n:
                 # update sigmas
