@@ -224,7 +224,7 @@ class Specialist():
 
     def parse_args(self):
         parser = argparse.ArgumentParser()
-        parser.add_argument('-exp', '--experiment_name', type=str, default='optimization_test', help='Name of experiment')
+        parser.add_argument('-exp', '--experiment_name', type=str, default='experiments/optimization_test', help='Name of experiment')
         parser.add_argument('-ps', '--population_size', type=int, default=100, help='Size of the population')
         parser.add_argument('-tg','--total_generations', type=int, default=100, help='Number of generations to run for')
         parser.add_argument('-n', '--n_hidden_neurons', type=int, default=10, help='Hidden layer size')
