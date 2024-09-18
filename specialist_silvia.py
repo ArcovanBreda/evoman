@@ -230,7 +230,7 @@ class Specialist():
         parser.add_argument('-n', '--n_hidden_neurons', type=int, default=10, help='Hidden layer size')
         parser.add_argument('-u', '--upperbound', type=int, default=1)
         parser.add_argument('-l', '--lowerbound', type=int, default=-1)
-        parser.add_argument('-k', '--kaiming', action="store_true", help="Use Kaiming initialization of NN weights")
+        parser.add_argument('-k', '--kaiming', action="store_true", help='Use Kaiming initialization of NN weights')
 
         args = parser.parse_args()
         self.population_size = args.population_size
