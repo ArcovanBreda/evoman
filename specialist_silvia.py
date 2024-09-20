@@ -78,7 +78,7 @@ class Specialist():
 
             total_weights = np.hstack((bias1, weights1, bias2, weights2))
         else:
-            total_weights = np.random.uniform(self.lowerbound, self.upperbound, (self.population_size, self.n_vars))
+            total_weights = np.random.uniform(self.lowerbound, self.upperbound, (self.population_size, self.n_vars - self.mutation_stepsize))
         
         if self.mutation_type == 'uncorrelated':
             sigmas = np.ones((self.population_size, self.mutation_stepsize)) * self.s_init
@@ -95,6 +95,7 @@ class Specialist():
 
         if self.mutation_type == 'uncorrelated':
             n = self.n_vars - self.mutation_stepsize
+
             if self.mutation_stepsize == 1:
                 # update sigma
                 tau = 1 / np.sqrt(n)
@@ -151,7 +152,7 @@ class Specialist():
             return pop[c2][0]
 
 
-    def crossover(self, pop, p_mutation, sigmas=None):
+    def crossover(self, pop, p_mutation):
 
         total_offspring = np.zeros((0,self.n_vars))
 
@@ -324,5 +325,10 @@ class Specialist():
 
 
 if __name__ == '__main__':
+    """
+    Kaiming initialization: add -k flag
+    For N-step self-adaptive mutation: -ms 265
+    For 1-step self-adaptive mutation: -ms 1
+    """
     specialist = Specialist()
     specialist.train()
