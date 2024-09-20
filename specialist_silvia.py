@@ -9,22 +9,7 @@ from uncorrelated_controller import uncorrelated_controller
 import numpy as np
 import os
 import tqdm
-import multiprocessing as mp
-import dill
-from multiprocessing import Pool
 
-# Set multiprocessing to use dill
-import multiprocessing.reduction
-multiprocessing.reduction.ForkingPickler = dill
-
-# runs simulation
-def simulation(env,x):
-    f,p,e,t = env.play(pcont=x)
-    return f
-
-# # evaluation
-# def evaluate(env, x):
-#     return np.array(list(map(lambda y: simulation(env,y), x)))
 
 class Specialist():
     def __init__(self) -> None:
@@ -37,21 +22,27 @@ class Specialist():
         if not os.path.exists(self.experiment_name):
             os.makedirs(self.experiment_name)
 
+        controller = player_controller(self.n_hidden_neurons)
+
         if self.mutation_type == 'uncorrelated':
             controller = uncorrelated_controller(self.n_hidden_neurons, self.mutation_stepsize)
-        else:
-            controller = player_controller(self.n_hidden_neurons)
         
         self.env = Environment(experiment_name=self.experiment_name,
-                    enemies=[2],
+                    enemies=[self.enemy],
                     playermode="ai",
-                    player_controller=controller, # you  can insert your own controller here
+                    player_controller=controller,
                     enemymode="static",
                     level=2,
                     speed="fastest",
                     visuals=False)
         self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5 + self.mutation_stepsize
 
+        if self.mutation_type == 'correlated':
+            # CMA-ES State
+            self.p_sigma = np.zeros(self.n_vars)
+            self.p_c = np.zeros(self.n_vars)
+            self.C = np.eye(self.n_vars)
+            self.m = []
 
     def simulation(self, neuron_values):
         f, p, e, t = self.env.play(pcont=neuron_values)
@@ -59,22 +50,21 @@ class Specialist():
 
 
     def fitness_eval(self, population):
-        return np.array([simulation(self.env, individual) for individual in population])
+        return np.array([self.simulation(individual) for individual in population])
 
 
     def initialize(self):
         if self.kaiming:
             n_actions = 5
-            n_inputs = 20 #TODO these are hardcoded for now
+            n_inputs = 20
             bias1 = np.zeros((self.population_size, self.n_hidden_neurons))
             bias2 = np.zeros((self.population_size, n_actions))
 
             limit1 = np.sqrt(1 / float(n_inputs))
             limit2 = np.sqrt(2 / float(self.n_hidden_neurons))
-            print("Limits: ", limit1, limit2) #TODO remove later
+            # print("Limits: ", limit1, limit2) #TODO remove later
             weights1 = np.random.normal(0.0, limit1, size=(self.population_size, n_inputs * self.n_hidden_neurons))
             weights2 = np.random.normal(0.0, limit2, size=(self.population_size, self.n_hidden_neurons * n_actions))
-            #TODO should self.lowerbound and self.upperbound be adjusted here?
 
             total_weights = np.hstack((bias1, weights1, bias2, weights2))
         else:
@@ -120,13 +110,28 @@ class Specialist():
             else:
                 raise NotImplementedError #TODO everything for k, 1 < k < n should probably contain mapping from sigma to alleles 
         elif self.mutation_type == 'correlated':
-            raise NotImplementedError
+            # CMA-ES mutation
+            child_mutated = np.random.multivariate_normal(mean=child, cov=self.sigma**2 * self.C)
         elif self.mutation_type == 'addition':
             # to check old behavior
             child_mutated = [i + np.random.normal(0, 1) if np.random.uniform() <= p_mutation else i for i in range(len(child))]
 
         child_mutated = np.clip(child_mutated, self.lowerbound, self.upperbound)
         return child_mutated
+
+
+    def update_evolution_paths(self, m, m_prime, population):
+        #  Tracks how far the search is moving and helps adjust the step size for balanced exploration
+        self.p_sigma = (1 - self.c_sigma) * self.p_sigma + np.sqrt(self.c_sigma * (2 - self.c_sigma)) * (m - m_prime) / self.sigma
+        # Tracks the direction of the search and helps update the covariance matrix, improving the ability to mutate correlated parameters
+        self.p_c = (1 - self.c_c) * self.p_c + np.sqrt(self.c_c * (2 - self.c_c)) * (m - m_prime) / self.sigma
+
+        self.C = (1 - self.c_1 - self.c_mu) * self.C + self.c_1 * np.outer(self.p_c, self.p_c) + self.c_mu * np.sum(
+            [np.outer(ind - m_prime, ind - m_prime) / self.sigma**2 for ind in population], axis=0)
+
+        # Update step size sigma
+        self.sigma = self.sigma * np.exp((np.linalg.norm(self.p_sigma) / np.sqrt(
+            1 - (1 - self.c_sigma)**(2 * (self.generation_number + 1))) - 1) / self.d_sigma)
 
 
     def limits(self, x):
@@ -170,10 +175,6 @@ class Specialist():
 
                 # mutation
                 offspring[f] = self.mutation(offspring[f], p_mutation)
-                # for i in range(0,len(offspring[f])):
-                    # if np.random.uniform(0 ,1)<=p_mutation:
-                        # offspring[f][i] =   offspring[f][i]+np.random.normal(0, 1)
-
                 offspring[f] = np.array(list(map(lambda y: self.limits(y), offspring[f])))
 
                 total_offspring = np.vstack((total_offspring, offspring[f]))
@@ -285,6 +286,14 @@ class Specialist():
         parser.add_argument('-ms', '--mutation_stepsize', type=int, default=0)
         parser.add_argument('-mt', '--mutation_threshold', type=float, default=0.01, help='epsilon_0 for uncorrelated mutation')
         parser.add_argument('-s', '--sigma_init', type=float, default=0, help='Init value for sigma(s) added to genes')
+        parser.add_argument('-sc', '--sigma_init_corr', type=float, default=0.5, help='Init value for sigma(s) for correlated')
+        parser.add_argument('-c', '--c_sigma', type=float, default=0.3, help='Init value for c_sigma (correlated)')
+        parser.add_argument('-cc', '--c_c', type=float, default=0.2, help='Init value for c_c (correlated)')
+        parser.add_argument('-ds', '--d_sigma', type=float, default=0.5, help='Init value for d_sigma (correlated)')
+        parser.add_argument('-c1', '--c_1', type=float, default=0.1, help='Init value for c_1 (correlated)')
+        parser.add_argument('-cmu', '--c_mu', type=float, default=0.1, help='Init value for c_mu (correlated)')
+        parser.add_argument('-e', '--enemy', type=int, default=2, help='Enemy to fight')
+        parser.add_argument('-t', '--train', action="store_true", help='Train EA')
 
         args = parser.parse_args()
         self.population_size = args.population_size
@@ -297,6 +306,17 @@ class Specialist():
         self.mutation_stepsize = args.mutation_stepsize
         self.mutation_threshold = args.mutation_threshold
         self.s_init = args.sigma_init
+        self.enemy = args.enemy
+        self.trainmode = args.train
+
+        # CMA-ES Parameters
+        if self.mutation_type == 'correlated':
+            self.c_sigma = args.c_sigma  # Learning rate for the step-size path
+            self.c_c = args.c_c          # Learning rate for the covariance matrix path
+            self.c_1 = args.c_1          # Learning rate for the covariance matrix update
+            self.c_mu = args.c_mu        # Learning rate for the covariance matrix update
+            self.d_sigma = args.d_sigma  # Damping for the step-size update
+            self.sigma = args.sigma_init_corr # Initial step size
 
         # usage check
         if self.mutation_type == 'uncorrelated' and self.mutation_stepsize < 1:
@@ -305,6 +325,13 @@ class Specialist():
         # file name generation
         self.experiment_name = 'experiments/' + args.experiment_name
         self.experiment_name += f'_popusize={self.population_size}'
+        self.experiment_name += f'_enemy={self.enemy}'
+
+        if self.trainmode:
+            self.experiment_name += f'_mode=train'
+        else:
+            self.experiment_name += f'_mode=test'
+
         self.experiment_name += f'_gens={self.total_generations}'
         self.experiment_name += f'_hiddensize={self.n_hidden_neurons}'
         self.experiment_name += f'_u={self.upperbound}'
@@ -315,6 +342,21 @@ class Specialist():
             self.experiment_name += f'_mutationstepsize={self.mutation_stepsize}'
             self.experiment_name += f'_mutationthreshold={self.mutation_threshold}'
             self.experiment_name += f'_sinit={self.s_init}'
+        elif self.mutation_type == 'correlated':
+            self.c_sigma = args.c_sigma  # Learning rate for the step-size path
+            self.c_c = args.c_c          # Learning rate for the covariance matrix path
+            self.c_1 = args.c_1          # Learning rate for the covariance matrix update
+            self.c_mu = args.c_mu        # Learning rate for the covariance matrix update
+            self.d_sigma = args.d_sigma  # Damping for the step-size update
+            self.sigma = args.sigma_init_corr # Initial step size
+
+            self.experiment_name += f'_csigma={self.c_sigma}'
+            self.experiment_name += f'_cc={self.c_c}'
+            self.experiment_name += f'_c1={self.c_1}'
+            self.experiment_name += f'_cmu={self.c_mu}'
+            self.experiment_name += f'_dsigma={self.d_sigma}'
+            self.experiment_name += f'_sigma={self.sigma}'
+            
 
         if self.kaiming:
             self.experiment_name += f'_init=kaiming'
@@ -325,10 +367,5 @@ class Specialist():
 
 
 if __name__ == '__main__':
-    """
-    Kaiming initialization: add -k flag
-    For N-step self-adaptive mutation: -ms 265
-    For 1-step self-adaptive mutation: -ms 1
-    """
     specialist = Specialist()
     specialist.train()
