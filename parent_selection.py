@@ -191,19 +191,22 @@ def dynamic_selection(population, fitnesses, generation):
 
     scores = [rws_score, lrs_score, ers_score, tos_score]
     new_populations = [rws_population, lrs_population, ers_population, tos_population]
-    new_fitnesses = [rws_fitness, lrs_fitness, ers_fitness, tos_fitness]
+    # new_fitnesses = [rws_fitness, lrs_fitness, ers_fitness, tos_fitness]
     best = np.argmax(scores)
     # print(len(new_fitnesses[0]), len(new_fitnesses[1]), len(new_fitnesses[2]), len(new_fitnesses[3]))
+    # print(new_populations[best].shape)
+    shuffled_population = np.random.permutation(new_populations[best])
 
-    return new_populations[best], new_fitnesses[best]
+
+    return shuffled_population#, new_fitnesses[best]
 
 
 # leave out truncation selection because it is not often used in practice and only for 
 # very large populations
 
 # for generation in range(1,100):
-#     pop, pop_fit = dynamic_selection(population, fitness_population, generation)
-#     print(generation, np.mean(pop_fit), np.std(pop_fit))
+#     pop = dynamic_selection(population, fitness_population, generation)
+#     print(generation, pop)
 # print(parent_selection(population, generation_num, fitness_population))
 # print(roulette_wheel_selection(population, fitness_population).shape)
 # dynamic_selection(population, fitness_population, generation_num)
