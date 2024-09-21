@@ -1,11 +1,9 @@
-import sys
 import argparse
-
 from evoman.environment import Environment
 from demo_controller import player_controller
 from uncorrelated_controller import uncorrelated_controller
+from parent_selection import dynamic_selection
 
-# imports other libs
 import numpy as np
 import os
 import tqdm
@@ -15,27 +13,22 @@ class Specialist():
     def __init__(self) -> None:
         self.parse_args()
 
-        self.headless = True
-        if self.headless:
-            os.environ["SDL_VIDEODRIVER"] = "dummy"
-
         if not os.path.exists(self.experiment_name):
             os.makedirs(self.experiment_name)
 
         controller = player_controller(self.n_hidden_neurons)
 
+        self.env = Environment(experiment_name=self.experiment_name,
+                enemies=[self.enemy_train],
+                playermode="ai",
+                player_controller=controller,
+                enemymode="static",
+                level=2,
+                speed="fastest",
+                visuals=False)
+        self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5 + self.mutation_stepsize
         if self.mutation_type == 'uncorrelated':
             controller = uncorrelated_controller(self.n_hidden_neurons, self.mutation_stepsize)
-
-        self.env = Environment(experiment_name=self.experiment_name,
-                    enemies=[self.enemy],
-                    playermode="ai",
-                    player_controller=controller,
-                    enemymode="static",
-                    level=2,
-                    speed="fastest",
-                    visuals=False)
-        self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5 + self.mutation_stepsize
 
         if self.mutation_type == 'correlated':
             # CMA-ES State
@@ -43,6 +36,12 @@ class Specialist():
             self.p_c = np.zeros(self.n_vars)
             self.C = np.eye(self.n_vars)
             self.m = []
+
+        if self.trainmode:
+            os.environ["SDL_VIDEODRIVER"] = "dummy"
+            self.train()
+        else:
+            self.test()
 
     def simulation(self, neuron_values):
         f, p, e, t = self.env.play(pcont=neuron_values)
@@ -129,48 +128,17 @@ class Specialist():
         self.sigma = self.sigma * np.exp((np.linalg.norm(self.p_sigma) / np.sqrt(
             1 - (1 - self.c_sigma)**(2 * (self.generation_number + 1))) - 1) / self.d_sigma)
 
-    def limits(self, x):
+    def crossover(self, parents):
+        total_offspring = np.zeros((0, self.n_vars))
 
-        if x > self.upperbound:
-            return self.upperbound
-        elif x < self.lowerbound:
-            return self.lowerbound
-        else:
-            return x
+        for i in range(0, len(parents), 2):
+            p1 = parents[i]
+            p2 = parents[i+1]
 
-    def tournament(self, pop):
-        c1 =  np.random.randint(0,pop.shape[0], 1)
-        c2 =  np.random.randint(0,pop.shape[0], 1)
-
-        c1_fit = self.fitness_eval(pop[c1])
-        c2_fit = self.fitness_eval(pop[c2])
-
-        if c1_fit > c2_fit:
-            return pop[c1][0]
-        else:
-            return pop[c2][0]
-
-    def crossover(self, pop, p_mutation):
-
-        total_offspring = np.zeros((0,self.n_vars))
-
-        for p in range(0, pop.shape[0], 2):
-            p1 = self.tournament(pop)
-            p2 = self.tournament(pop)
-
-            n_offspring = np.random.randint(1, 3 + 1, 1)[0]
-            offspring = np.zeros((n_offspring, self.n_vars))
-
-            for f in range(0, n_offspring):
-
-                cross_prop = np.random.uniform(0,1)
-                offspring[f] = p1*cross_prop+p2*(1-cross_prop)
-
-                # mutation
-                offspring[f] = self.mutation(offspring[f], p_mutation)
-                offspring[f] = np.array(list(map(lambda y: self.limits(y), offspring[f])))
-
-                total_offspring = np.vstack((total_offspring, offspring[f]))
+            cross_prop = 0.5
+            offspring = p1 * cross_prop + p2 * (1 - cross_prop)
+            offspring = self.mutation(offspring)
+            total_offspring = np.vstack((total_offspring, offspring))
 
         return total_offspring
 
@@ -186,20 +154,9 @@ class Specialist():
 
 
     def selection(self, new_population, new_fitness_population):
-        # TODO: find a better metric
+        # TODO: REWRITE
         p = np.array([self.normalize(pop, new_fitness_population) for pop in range(len(new_population))])
         p = p / p.sum()
-        # print(sorted(p))
-        # chosen_idx = np.random.choice(np.arange(new_population.shape[0]),
-        #                         size=self.population_size,
-        #                         replace=False,
-        #                         p=p)
-
-        # chosen_idx = np.random.choice(np.arange(new_population.shape[0]),
-        #                         size=self.population_size,
-        #                         replace=True)
-        # return new_population[chosen_idx, :], new_fitness_population[chosen_idx]
-
         fit_pop_cp = new_fitness_population
         fit_pop_norm =  np.array(list(map(lambda y: self.normalize(y,fit_pop_cp), new_fitness_population))) # avoiding negative probabilities, as fitness is ranges from negative numbers
         probs = (fit_pop_norm)/(fit_pop_norm).sum()
@@ -214,9 +171,10 @@ class Specialist():
 
     def train(self):
         # if no earlier training is done:
-        if not os.path.exists(self.experiment_name+'/evoman_solstate'):
+        if not os.path.exists(self.experiment_name+'/results.txt'):
             population = self.initialize()
             generation_number = 0
+
         else:
             print(f"Found earlier state for: {self.experiment_name}")
             self.env.load_state()
@@ -227,20 +185,36 @@ class Specialist():
                 for line in f:
                     l = line
                 generation_number = int(l.strip().split()[1][:-1])
+            
+            if generation_number+1 >= self.total_generations:
+                print("\n\nAlready fully trained\n\n")
+                return 
+
+            if self.mutation_type == 'correlated':
+                with np.load(self.experiment_name + '/CMA_params.npz') as CMA_params:
+                    self.p_sigma = CMA_params['p_sigma']
+                    self.p_c = CMA_params['p_c']
+                    self.C = CMA_params['C']
+                    self.m = list(CMA_params['m'])
+
         fitness_population = self.fitness_eval(population)
 
         # Evolution loop
         for gen_idx in tqdm.tqdm(range(generation_number, self.total_generations)):
-            # create offspring
-            offspring = self.crossover(population, p_mutation=0.2)# PLACEHOLDER
-            # mutated_offspring = [self.mutation(springie) for springie in offspring]
+            self.generation_number = gen_idx
+            # create parents
+            parents = dynamic_selection(population, fitness_population, self.generation_number+1)
 
+            # create new population (consisting of offspring)
+            offspring = self.crossover(parents)
+
+            # new population
             new_population = np.vstack((population, offspring))
 
             # evaluate new population
             new_fitness_population = self.fitness_eval(new_population)
 
-            # select population to continue to next generation
+            # select
             population, fitness_population = self.selection(new_population, new_fitness_population)
 
             # save metrics for post-hoc evaluation
@@ -248,17 +222,29 @@ class Specialist():
             mean = np.mean(fitness_population)
             std  = np.std(fitness_population)
 
-            with open(self.experiment_name + '/results.txt', 'a') as f:
-                # save as best, mean, std
-                print("asd")
-                print(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}" )
-                f.write(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}\n")
+            if not self.intermediate_save:
+                with open(self.experiment_name + '/results.txt', 'a') as f:
+                    # save as best, mean, std
+                    print(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}" )
+                    f.write(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}\n")
 
-            np.savetxt(self.experiment_name + '/best.txt', population[best])
+                np.savetxt(self.experiment_name + '/best.txt', population[best])
+
+                if self.mutation_type == 'correlated':
+                    np.savez(self.experiment_name + '/CMA_params.npz',
+                            p_sigma=self.p_sigma, p_c=self.p_c, C=self.C, m=self.m)
+
             solutions = [population, fitness_population]
             self.env.update_solutions(solutions)
             self.env.save_state()
 
+            # add mean for updating
+            self.m.append(np.mean(population, axis=0))
+            mean = self.m[-1]
+            prev_m = self.m[-2] if len(self.m) > 1 else mean
+
+            # update for CMA
+            self.update_evolution_paths(mean, prev_m, population)
 
     def parse_args(self):
         parser = argparse.ArgumentParser()
@@ -279,9 +265,13 @@ class Specialist():
         parser.add_argument('-ds', '--d_sigma', type=float, default=0.5, help='Init value for d_sigma (correlated)')
         parser.add_argument('-c1', '--c_1', type=float, default=0.1, help='Init value for c_1 (correlated)')
         parser.add_argument('-cmu', '--c_mu', type=float, default=0.1, help='Init value for c_mu (correlated)')
-        parser.add_argument('-e', '--enemy', type=int, default=2, help='Enemy to fight')
+        parser.add_argument('-etr', '--enemy_train', type=int, default=2, help='Enemy to fight during training')
+        parser.add_argument('-ete', '--enemy_test', type=str, default='2', help='Enemy to fight during testing (1,3,5)')
         parser.add_argument('-t', '--train', action="store_true", help='Train EA')
+        parser.add_argument('-is', '--intermediate_save', action="store_true", help="Don't automaticaly save states.")
+        parser.add_argument('-v', '--visualise_best', action="store_true", help="Shows the character when testing")
 
+        
         args = parser.parse_args()
         self.population_size = args.population_size
         self.total_generations = args.total_generations
@@ -293,8 +283,11 @@ class Specialist():
         self.mutation_stepsize = args.mutation_stepsize
         self.mutation_threshold = args.mutation_threshold
         self.s_init = args.sigma_init
-        self.enemy = args.enemy
+        self.enemy_train = args.enemy_train
+        self.enemy_test = [int(x) for x in args.enemy_test.split(',')]
         self.trainmode = args.train
+        self.intermediate_save = args.intermediate_save
+        self.visualise_best = args.visualise_best
 
         # CMA-ES Parameters
         if self.mutation_type == 'correlated':
@@ -312,12 +305,12 @@ class Specialist():
         # file name generation
         self.experiment_name = 'experiments/' + args.experiment_name
         self.experiment_name += f'_popusize={self.population_size}'
-        self.experiment_name += f'_enemy={self.enemy}'
+        self.experiment_name += f'_enemy={self.enemy_train}'
 
-        if self.trainmode:
-            self.experiment_name += '_mode=train'
-        else:
-            self.experiment_name += '_mode=test'
+        # if self.trainmode:
+        #     self.experiment_name += '_mode=train'
+        # else:
+        #     self.experiment_name += '_mode=test'
 
         self.experiment_name += f'_gens={self.total_generations}'
         self.experiment_name += f'_hiddensize={self.n_hidden_neurons}'
@@ -345,16 +338,34 @@ class Specialist():
         #     self.experiment_name += f'_cmu={self.c_mu}'
         #     self.experiment_name += f'_dsigma={self.d_sigma}'
         #     self.experiment_name += f'_sigma={self.sigma}'
-            
 
         if self.kaiming:
             self.experiment_name += f'_init=kaiming'
         else:
             self.experiment_name += f'_init=random'
 
-        return 
+        return
 
+    def test(self):
+        self.env.enemies = [self.enemy_test]
+        if self.visualise_best:
+            self.env.visuals = True 
+            self.env.speed = "normal" 
+            self.env.headless = False
+
+        best_individual_path = os.path.join(self.experiment_name, 'best.txt')
+        if not os.path.exists(best_individual_path):
+            raise FileNotFoundError(f"\n\nBest individual not found at {best_individual_path}, please set flag -t to train")
+
+        best_individual = np.loadtxt(best_individual_path)
+
+        # Simulate the environment with the best individual
+        fitness_scores = []
+        for enemy in self.enemy_test:
+            self.env.enemies = [enemy]
+            fitness_scores.append(self.simulation(best_individual))
+            print(f"Fitness of the best individual against enemy {enemy}: {fitness_scores[-1]}")
+        return fitness_scores
 
 if __name__ == '__main__':
     specialist = Specialist()
-    specialist.train()

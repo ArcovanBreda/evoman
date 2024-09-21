@@ -7,6 +7,13 @@ from demo_controller import player_controller
 import numpy as np
 import os
 import tqdm
+import multiprocessing as mp
+import dill
+from multiprocessing import Pool
+
+# Set multiprocessing to use dill
+import multiprocessing.reduction
+multiprocessing.reduction.ForkingPickler = dill
 
 # runs simulation
 def simulation(env,x):
@@ -52,8 +59,13 @@ class Specialist():
         return f
 
     def fitness_eval(self, population):
-        return np.array([self.simulation(individual) for individual in population])
-
+        return np.array([simulation(self.env, individual) for individual in population])
+    
+    
+    # def fitness_eval(self, population):
+    #     with Pool(mp.cpu_count()) as pool:
+    #         fitness_population = pool.starmap(self.simulation, [(self.env, individual) for individual in population])
+    #     return np.array(fitness_population)
 
     def initialize(self):
         return np.random.uniform(self.lowerbound,
@@ -149,7 +161,10 @@ class Specialist():
         fit_pop_norm =  np.array(list(map(lambda y: self.normalize(y,fit_pop_cp), new_fitness_population))) # avoiding negative probabilities, as fitness is ranges from negative numbers
         probs = (fit_pop_norm)/(fit_pop_norm).sum()
         chosen = np.random.choice(new_population.shape[0], self.population_size , p=probs, replace=False)
+        print(chosen)
         chosen = np.append(chosen[1:],np.argmax(new_fitness_population))
+        print(chosen)
+        print(chosen.shape)
         pop = new_population[chosen]
         fit_pop = new_fitness_population[chosen]
 
