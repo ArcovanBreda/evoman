@@ -14,7 +14,7 @@ import tqdm
 class Specialist():
     def __init__(self) -> None:
         self.parse_args()
-    
+
         self.headless = True
         if self.headless:
             os.environ["SDL_VIDEODRIVER"] = "dummy"
@@ -26,7 +26,7 @@ class Specialist():
 
         if self.mutation_type == 'uncorrelated':
             controller = uncorrelated_controller(self.n_hidden_neurons, self.mutation_stepsize)
-        
+
         self.env = Environment(experiment_name=self.experiment_name,
                     enemies=[self.enemy],
                     playermode="ai",
@@ -48,10 +48,8 @@ class Specialist():
         f, p, e, t = self.env.play(pcont=neuron_values)
         return f
 
-
     def fitness_eval(self, population):
         return np.array([self.simulation(individual) for individual in population])
-
 
     def initialize(self):
         if self.kaiming:
@@ -69,14 +67,13 @@ class Specialist():
             total_weights = np.hstack((bias1, weights1, bias2, weights2))
         else:
             total_weights = np.random.uniform(self.lowerbound, self.upperbound, (self.population_size, self.n_vars - self.mutation_stepsize))
-        
+
         if self.mutation_type == 'uncorrelated':
             sigmas = np.ones((self.population_size, self.mutation_stepsize)) * self.s_init
 
             return np.hstack((total_weights, sigmas))
 
         return total_weights
-
 
     def mutation(self, child, p_mutation=0.2):
         """Expects a single child as input and mutates it."""
@@ -119,7 +116,6 @@ class Specialist():
         child_mutated = np.clip(child_mutated, self.lowerbound, self.upperbound)
         return child_mutated
 
-
     def update_evolution_paths(self, m, m_prime, population):
         #  Tracks how far the search is moving and helps adjust the step size for balanced exploration
         self.p_sigma = (1 - self.c_sigma) * self.p_sigma + np.sqrt(self.c_sigma * (2 - self.c_sigma)) * (m - m_prime) / self.sigma
@@ -133,16 +129,14 @@ class Specialist():
         self.sigma = self.sigma * np.exp((np.linalg.norm(self.p_sigma) / np.sqrt(
             1 - (1 - self.c_sigma)**(2 * (self.generation_number + 1))) - 1) / self.d_sigma)
 
-
     def limits(self, x):
 
-        if x>self.upperbound:
+        if x > self.upperbound:
             return self.upperbound
-        elif x<self.lowerbound:
+        elif x < self.lowerbound:
             return self.lowerbound
         else:
             return x
-
 
     def tournament(self, pop):
         c1 =  np.random.randint(0,pop.shape[0], 1)
@@ -155,7 +149,6 @@ class Specialist():
             return pop[c1][0]
         else:
             return pop[c2][0]
-
 
     def crossover(self, pop, p_mutation):
 
@@ -180,7 +173,6 @@ class Specialist():
                 total_offspring = np.vstack((total_offspring, offspring[f]))
 
         return total_offspring
-
 
     def normalize(self, pop, fit):
 
@@ -220,28 +212,22 @@ class Specialist():
 
         return pop, fit_pop
 
-
     def train(self):
         # if no earlier training is done:
         if not os.path.exists(self.experiment_name+'/evoman_solstate'):
             population = self.initialize()
             generation_number = 0
         else:
-            print("Found earlier state")
+            print(f"Found earlier state for: {self.experiment_name}")
             self.env.load_state()
             population = self.env.solutions[0]
 
-            # find generation we left off at:
+            # find generation we left of at:
             with open(self.experiment_name + '/results.txt', 'r') as f:
                 for line in f:
                     l = line
                 generation_number = int(l.strip().split()[1][:-1])
-
-        # Log mean, best, std
         fitness_population = self.fitness_eval(population)
-        # mean = np.mean(fitness_population)
-        # best = np.argmax(fitness_population)
-        # std = np.std(fitness_population)
 
         # Evolution loop
         for gen_idx in tqdm.tqdm(range(generation_number, self.total_generations)):
@@ -264,6 +250,7 @@ class Specialist():
 
             with open(self.experiment_name + '/results.txt', 'a') as f:
                 # save as best, mean, std
+                print("asd")
                 print(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}" )
                 f.write(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}\n")
 
@@ -277,7 +264,7 @@ class Specialist():
         parser = argparse.ArgumentParser()
         parser.add_argument('-exp', '--experiment_name', type=str, default='test', help='Name of experiment')
         parser.add_argument('-ps', '--population_size', type=int, default=100, help='Size of the population')
-        parser.add_argument('-tg','--total_generations', type=int, default=100, help='Number of generations to run for')
+        parser.add_argument('-tg', '--total_generations', type=int, default=100, help='Number of generations to run for')
         parser.add_argument('-n', '--n_hidden_neurons', type=int, default=10, help='Hidden layer size')
         parser.add_argument('-u', '--upperbound', type=int, default=1)
         parser.add_argument('-l', '--lowerbound', type=int, default=-1)
@@ -311,11 +298,11 @@ class Specialist():
 
         # CMA-ES Parameters
         if self.mutation_type == 'correlated':
-            self.c_sigma = args.c_sigma  # Learning rate for the step-size path
-            self.c_c = args.c_c          # Learning rate for the covariance matrix path
-            self.c_1 = args.c_1          # Learning rate for the covariance matrix update
-            self.c_mu = args.c_mu        # Learning rate for the covariance matrix update
-            self.d_sigma = args.d_sigma  # Damping for the step-size update
+            self.c_sigma = args.c_sigma       # Learning rate for the step-size path
+            self.c_c = args.c_c               # Learning rate for the covariance matrix path
+            self.c_1 = args.c_1               # Learning rate for the covariance matrix update
+            self.c_mu = args.c_mu             # Learning rate for the covariance matrix update
+            self.d_sigma = args.d_sigma       # Damping for the step-size update
             self.sigma = args.sigma_init_corr # Initial step size
 
         # usage check
@@ -328,9 +315,9 @@ class Specialist():
         self.experiment_name += f'_enemy={self.enemy}'
 
         if self.trainmode:
-            self.experiment_name += f'_mode=train'
+            self.experiment_name += '_mode=train'
         else:
-            self.experiment_name += f'_mode=test'
+            self.experiment_name += '_mode=test'
 
         self.experiment_name += f'_gens={self.total_generations}'
         self.experiment_name += f'_hiddensize={self.n_hidden_neurons}'
@@ -338,24 +325,26 @@ class Specialist():
         self.experiment_name += f'_l={self.lowerbound}'
         self.experiment_name += f'_mutationtype={self.mutation_type}'
 
-        if self.mutation_type == 'uncorrelated':
-            self.experiment_name += f'_mutationstepsize={self.mutation_stepsize}'
-            self.experiment_name += f'_mutationthreshold={self.mutation_threshold}'
-            self.experiment_name += f'_sinit={self.s_init}'
-        elif self.mutation_type == 'correlated':
-            self.c_sigma = args.c_sigma  # Learning rate for the step-size path
-            self.c_c = args.c_c          # Learning rate for the covariance matrix path
-            self.c_1 = args.c_1          # Learning rate for the covariance matrix update
-            self.c_mu = args.c_mu        # Learning rate for the covariance matrix update
-            self.d_sigma = args.d_sigma  # Damping for the step-size update
-            self.sigma = args.sigma_init_corr # Initial step size
 
-            self.experiment_name += f'_csigma={self.c_sigma}'
-            self.experiment_name += f'_cc={self.c_c}'
-            self.experiment_name += f'_c1={self.c_1}'
-            self.experiment_name += f'_cmu={self.c_mu}'
-            self.experiment_name += f'_dsigma={self.d_sigma}'
-            self.experiment_name += f'_sigma={self.sigma}'
+        # MAG DIT WEG?
+        # if self.mutation_type == 'uncorrelated':
+        #     self.experiment_name += f'_mutationstepsize={self.mutation_stepsize}'
+        #     self.experiment_name += f'_mutationthreshold={self.mutation_threshold}'
+        #     self.experiment_name += f'_sinit={self.s_init}'
+        # elif self.mutation_type == 'correlated':
+        #     self.c_sigma = args.c_sigma  # Learning rate for the step-size path
+        #     self.c_c = args.c_c          # Learning rate for the covariance matrix path
+        #     self.c_1 = args.c_1          # Learning rate for the covariance matrix update
+        #     self.c_mu = args.c_mu        # Learning rate for the covariance matrix update
+        #     self.d_sigma = args.d_sigma  # Damping for the step-size update
+        #     self.sigma = args.sigma_init_corr # Initial step size
+
+        #     self.experiment_name += f'_csigma={self.c_sigma}'
+        #     self.experiment_name += f'_cc={self.c_c}'
+        #     self.experiment_name += f'_c1={self.c_1}'
+        #     self.experiment_name += f'_cmu={self.c_mu}'
+        #     self.experiment_name += f'_dsigma={self.d_sigma}'
+        #     self.experiment_name += f'_sigma={self.sigma}'
             
 
         if self.kaiming:

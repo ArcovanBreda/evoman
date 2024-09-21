@@ -106,31 +106,13 @@ class Specialist():
         else:
             return pop[c2][0]
 
-    # def crossover(self, pop, p_mutation):
-    #     total_offspring = np.zeros((0, self.n_vars))
-    #     for p in range(0, pop.shape[0], 2):
-    #         p1 = self.tournament(pop)
-    #         p2 = self.tournament(pop)
 
-    #         n_offspring = np.random.randint(1, 4)
-    #         offspring = np.zeros((n_offspring, self.n_vars))
-
-    #         for f in range(n_offspring):
-    #             cross_prop = np.random.uniform(0, 1)
-    #             offspring[f] = p1 * cross_prop + p2 * (1 - cross_prop)
-    #             offspring[f] = self.mutation(offspring[f])
-    #             print(offspring[f])
-    #             total_offspring = np.vstack((total_offspring, offspring[f]))
-
-    #     return total_offspring
-    
     def crossover(self, parents):
         total_offspring = np.zeros((0, self.n_vars))
-        
+
         for i in range(0, len(parents), 2):
             p1 = parents[i]
             p2 = parents[i+1]
-            
 
             cross_prop = 0.5
             offspring = p1 * cross_prop + p2 * (1 - cross_prop)
@@ -150,7 +132,7 @@ class Specialist():
             #     total_offspring = np.vstack((total_offspring, p2))
 
         return total_offspring
-    
+
     def normalize(self, pop, fit):
         if (max(fit) - min(fit)) > 0:
             x_norm = (pop - min(fit)) / (max(fit) - min(fit))
@@ -199,27 +181,6 @@ class Specialist():
             # select
             population, fitness_population = self.selection(new_population, new_fitness_population)
 
-            # # fitness of new population
-            # fitness_population_offspring = self.fitness_eval(new_population_offspring)
-
-            # # select from offspring
-            # population, fitness_population = self.selection(new_population_offspring, fitness_population_offspring)
-
-            # print(population.shape[0])
-            # print(new_population_offspring.shape[0])
-
-            # # create offspring
-            # offspring = self.crossover(population, p_mutation=0.2)# PLACEHOLDER
-            # # mutated_offspring = [self.mutation(springie) for springie in offspring]
-
-            # new_population = np.vstack((population, offspring))
-
-            # # evaluate new population
-            # new_fitness_population = self.fitness_eval(new_population)
-
-            # # select population to continue to next generation
-            # population, fitness_population = self.selection(new_population, new_fitness_population)
-
             # save metrics for post-hoc evaluation
             best = self.fitness_eval([population[np.argmax(fitness_population)]])[0]
             mean = np.mean(fitness_population)
@@ -244,4 +205,4 @@ class Specialist():
             self.update_evolution_paths(mean, prev_m, population)
 
 if __name__ == '__main__':
-    Specialist(experiment_name='optimization_test_arco5', population_size=200, n_hidden_neurons=10).train(total_generations=100)
+    Specialist(experiment_name='optimization_test_arco5', population_size=00, n_hidden_neurons=10).train(total_generations=100)
