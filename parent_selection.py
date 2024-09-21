@@ -21,7 +21,7 @@ def roulette_wheel_selection(population, fitnesses):
 
     total_fitness = np.sum(fitnesses)
 
-    for _ in range(n): 
+    for _ in range(2*n): 
         alpha = np.random.uniform(0, total_fitness)
         cumulative_sum = 0
         j = 0
@@ -80,12 +80,12 @@ def linear_rank_selection(population, fitnesses):
 
     value = 1 / (n - 2.001)
 
-    while len(selected_individuals) < n:
+    while len(selected_individuals) < 2*n:
         for i in range(n):
             alpha = np.random.uniform(0, value)
             for j in range(n):
                 if probs[j] <= alpha:
-                    if len(selected_individuals) < n:
+                    if len(selected_individuals) < 2*n:
                         selected_individuals.append(population[j])
                         selected_fitness.append(fitnesses[j])
                     break
@@ -111,7 +111,7 @@ def exponential_rank_selection(population, fitnesses):
         probs[i] = 1.0 * np.exp( - ranks[i] / c)
 
 
-    for i in range(n):
+    for _ in range(2*n):
         alpha = np.random.uniform(1 / 9 * c, 2 / c)
         for j in range(n):
             if probs[j] <= alpha:
@@ -129,7 +129,7 @@ def tournament_selection(population, fitnesses):
     n = population.shape[0]
 
     k = 20
-    for _ in range(n):
+    for _ in range(2*n):
         temp = list(zip(population, fitnesses))
         np.random.shuffle(temp)
         res1, res2 = zip(*temp)
