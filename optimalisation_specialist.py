@@ -72,8 +72,10 @@ class Specialist():
         if np.random.uniform() > 0.6:
             return child
 
+        # small value for numerical stability
         mutated_child = np.random.multivariate_normal(mean=child, cov=self.sigma**2 * self.C)
         mutated_child = np.clip(mutated_child, self.lowerbound, self.upperbound)
+
         return mutated_child
 
     def update_evolution_paths(self, m, m_prime, population):
@@ -117,25 +119,35 @@ class Specialist():
     #             cross_prop = np.random.uniform(0, 1)
     #             offspring[f] = p1 * cross_prop + p2 * (1 - cross_prop)
     #             offspring[f] = self.mutation(offspring[f])
+    #             print(offspring[f])
     #             total_offspring = np.vstack((total_offspring, offspring[f]))
 
     #     return total_offspring
     
-    def crossover(self, parents, p_mutation):
+    def crossover(self, parents):
         total_offspring = np.zeros((0, self.n_vars))
         
         for i in range(0, len(parents), 2):
             p1 = parents[i]
             p2 = parents[i+1]
+            
 
-            n_offspring = np.random.randint(1, 4)
-            offspring = np.zeros((n_offspring, self.n_vars))
+            cross_prop = 0.5
+            offspring = p1 * cross_prop + p2 * (1 - cross_prop)
+            offspring = self.mutation(offspring)
+            total_offspring = np.vstack((total_offspring, offspring))
+                    # cross_prop = 0.5
+                # offspring[f] = p1 * cross_prop + p2 * (1 - cross_prop)
+                # # offspring = p1 * 0.5 + p2 * 0.5 # whole arithmetic mean, one child
+                # offspring[f] = self.mutation(offspring[f])
+                # total_offspring = np.vstack((total_offspring, offspring[f]))
 
-            for f in range(n_offspring):
-                cross_prop = np.random.uniform(0, 1)
-                offspring[f] = p1 * cross_prop + p2 * (1 - cross_prop)
-                offspring[f] = self.mutation(offspring[f])
-                total_offspring = np.vstack((total_offspring, offspring[f]))
+            #     if np.random.uniform() > p_mutation:
+            #         p1 = self.mutation(p1)
+            #     if np.random.uniform() > p_mutation:
+            #         p2 = self.mutation(p1)
+            #     total_offspring = np.vstack((total_offspring, p1))
+            #     total_offspring = np.vstack((total_offspring, p2))
 
         return total_offspring
     
@@ -176,15 +188,25 @@ class Specialist():
             parents = dynamic_selection(population, fitness_population, self.generation_number+1)
 
             # create new population (consisting of offspring)
-            new_population_offspring = self.crossover(parents, p_mutation=0.2)
+            offspring = self.crossover(parents)
 
-            # fitness of new population
-            fitness_population_offspring = self.fitness_eval(new_population_offspring)
+            # new population
+            new_population = np.vstack((population, offspring))
 
-            # select from offspring
-            population, fitness_population = self.selection(new_population_offspring, fitness_population_offspring)
+            # evaluate new population
+            new_fitness_population = self.fitness_eval(new_population)
 
-            print(population.shape[0])
+            # select
+            population, fitness_population = self.selection(new_population, new_fitness_population)
+
+            # # fitness of new population
+            # fitness_population_offspring = self.fitness_eval(new_population_offspring)
+
+            # # select from offspring
+            # population, fitness_population = self.selection(new_population_offspring, fitness_population_offspring)
+
+            # print(population.shape[0])
+            # print(new_population_offspring.shape[0])
 
             # # create offspring
             # offspring = self.crossover(population, p_mutation=0.2)# PLACEHOLDER

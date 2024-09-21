@@ -21,7 +21,7 @@ def roulette_wheel_selection(population, fitnesses):
 
     total_fitness = np.sum(fitnesses)
 
-    for _ in range(2*n): 
+    for _ in range(int(n)): 
         alpha = np.random.uniform(0, total_fitness)
         cumulative_sum = 0
         j = 0
@@ -80,12 +80,12 @@ def linear_rank_selection(population, fitnesses):
 
     value = 1 / (n - 2.001)
 
-    while len(selected_individuals) < 2*n:
+    while len(selected_individuals) < int(n):
         for i in range(n):
             alpha = np.random.uniform(0, value)
             for j in range(n):
                 if probs[j] <= alpha:
-                    if len(selected_individuals) < 2*n:
+                    if len(selected_individuals) < int(n):
                         selected_individuals.append(population[j])
                         selected_fitness.append(fitnesses[j])
                     break
@@ -111,7 +111,7 @@ def exponential_rank_selection(population, fitnesses):
         probs[i] = 1.0 * np.exp( - ranks[i] / c)
 
 
-    for _ in range(2*n):
+    for _ in range(int(n)):
         alpha = np.random.uniform(1 / 9 * c, 2 / c)
         for j in range(n):
             if probs[j] <= alpha:
@@ -129,7 +129,7 @@ def tournament_selection(population, fitnesses):
     n = population.shape[0]
 
     k = 20
-    for _ in range(2*n):
+    for _ in range(int(n)):
         temp = list(zip(population, fitnesses))
         np.random.shuffle(temp)
         res1, res2 = zip(*temp)
@@ -194,6 +194,7 @@ def dynamic_selection(population, fitnesses, generation):
     new_populations = [rws_population, lrs_population, ers_population, tos_population]
     # new_fitnesses = [rws_fitness, lrs_fitness, ers_fitness, tos_fitness]
     best = np.argmax(scores)
+
     # print(len(new_fitnesses[0]), len(new_fitnesses[1]), len(new_fitnesses[2]), len(new_fitnesses[3]))
     # print(new_populations[best].shape)
     shuffled_population = np.random.permutation(new_populations[best])
