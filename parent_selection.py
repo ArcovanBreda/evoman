@@ -156,9 +156,10 @@ def selection_score(population, fitness_population, generation):
     criteria1 = 0
     pop_size = population.shape[0]
 
-    # Hamming distance is binary so we use Euclidean distance instead
+    # Hamming distance is binary so we use Manhattan distance instead
     for individual in population:
-        criteria1 += np.linalg.norm(best - individual)
+        criteria1 += np.sum(np.abs(best - individual))
+        #np.linalg.norm(best - individual)
     criteria1 /=  pop_size # normalize
     criteria1 = np.exp(- criteria1 / generation) # decrease over generations
 

@@ -1,6 +1,7 @@
 import sys
 from evoman.environment import Environment
 from demo_controller import player_controller
+from parent_selection import dynamic_selection
 
 import numpy as np
 import os
@@ -103,11 +104,29 @@ class Specialist():
         else:
             return pop[c2][0]
 
-    def crossover(self, pop, p_mutation):
+    # def crossover(self, pop, p_mutation):
+    #     total_offspring = np.zeros((0, self.n_vars))
+    #     for p in range(0, pop.shape[0], 2):
+    #         p1 = self.tournament(pop)
+    #         p2 = self.tournament(pop)
+
+    #         n_offspring = np.random.randint(1, 4)
+    #         offspring = np.zeros((n_offspring, self.n_vars))
+
+    #         for f in range(n_offspring):
+    #             cross_prop = np.random.uniform(0, 1)
+    #             offspring[f] = p1 * cross_prop + p2 * (1 - cross_prop)
+    #             offspring[f] = self.mutation(offspring[f])
+    #             total_offspring = np.vstack((total_offspring, offspring[f]))
+
+    #     return total_offspring
+    
+    def crossover(self, parents, p_mutation):
         total_offspring = np.zeros((0, self.n_vars))
-        for p in range(0, pop.shape[0], 2):
-            p1 = self.tournament(pop)
-            p2 = self.tournament(pop)
+        
+        for i in range(0, len(parents), 2):
+            p1 = parents[i]
+            p2 = parents[i+1]
 
             n_offspring = np.random.randint(1, 4)
             offspring = np.zeros((n_offspring, self.n_vars))
@@ -119,7 +138,7 @@ class Specialist():
                 total_offspring = np.vstack((total_offspring, offspring[f]))
 
         return total_offspring
-
+    
     def normalize(self, pop, fit):
         if (max(fit) - min(fit)) > 0:
             x_norm = (pop - min(fit)) / (max(fit) - min(fit))
@@ -152,17 +171,32 @@ class Specialist():
 
         for gen_idx in tqdm.tqdm(range(self.generation_number, total_generations)):
             self.generation_number = gen_idx
-            # create offspring
-            offspring = self.crossover(population, p_mutation=0.2)# PLACEHOLDER
-            # mutated_offspring = [self.mutation(springie) for springie in offspring]
 
-            new_population = np.vstack((population, offspring))
+            # create parents
+            parents = dynamic_selection(population, fitness_population, self.generation_number+1)
 
-            # evaluate new population
-            new_fitness_population = self.fitness_eval(new_population)
+            # create new population (consisting of offspring)
+            new_population_offspring = self.crossover(parents, p_mutation=0.2)
 
-            # select population to continue to next generation
-            population, fitness_population = self.selection(new_population, new_fitness_population)
+            # fitness of new population
+            fitness_population_offspring = self.fitness_eval(new_population_offspring)
+
+            # select from offspring
+            population, fitness_population = self.selection(new_population_offspring, fitness_population_offspring)
+
+            print(population.shape[0])
+
+            # # create offspring
+            # offspring = self.crossover(population, p_mutation=0.2)# PLACEHOLDER
+            # # mutated_offspring = [self.mutation(springie) for springie in offspring]
+
+            # new_population = np.vstack((population, offspring))
+
+            # # evaluate new population
+            # new_fitness_population = self.fitness_eval(new_population)
+
+            # # select population to continue to next generation
+            # population, fitness_population = self.selection(new_population, new_fitness_population)
 
             # save metrics for post-hoc evaluation
             best = self.fitness_eval([population[np.argmax(fitness_population)]])[0]
@@ -188,4 +222,4 @@ class Specialist():
             self.update_evolution_paths(mean, prev_m, population)
 
 if __name__ == '__main__':
-    Specialist(experiment_name='optimization_test_arco4', population_size=200, n_hidden_neurons=10).train(total_generations=100)
+    Specialist(experiment_name='optimization_test_arco5', population_size=200, n_hidden_neurons=10).train(total_generations=100)
