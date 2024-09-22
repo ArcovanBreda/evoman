@@ -1,5 +1,7 @@
 #!/bin/bash
 
+start_time=$SECONDS
+
 etr_values=(1 3 5)
 
 for etr in "${etr_values[@]}"; do
@@ -14,6 +16,10 @@ for etr in "${etr_values[@]}"; do
         sleep 1
     done
 done
+
+elapsed_time=$(( SECONDS - start_time ))
+
+echo "Total time taken: $elapsed_time seconds"
 
 # chmod +x experiments_correlated.sh
 # ./experiments_correlated.sh

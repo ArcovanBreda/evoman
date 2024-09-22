@@ -16,7 +16,10 @@ class Specialist():
         if not os.path.exists(self.experiment_name):
             os.makedirs(self.experiment_name)
 
-        controller = player_controller(self.n_hidden_neurons)
+        if self.mutation_type == 'uncorrelated':
+            controller = uncorrelated_controller(self.n_hidden_neurons, self.mutation_stepsize)
+        else:
+            controller = player_controller(self.n_hidden_neurons)
 
         self.env = Environment(experiment_name=self.experiment_name,
                 enemies=[self.enemy_train],
@@ -27,8 +30,6 @@ class Specialist():
                 speed="fastest",
                 visuals=False)
         self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5 + self.mutation_stepsize
-        if self.mutation_type == 'uncorrelated':
-            controller = uncorrelated_controller(self.n_hidden_neurons, self.mutation_stepsize)
 
         if self.mutation_type == 'correlated':
             # CMA-ES State
@@ -40,12 +41,14 @@ class Specialist():
         if self.trainmode:
             os.environ["SDL_VIDEODRIVER"] = "dummy"
             self.train()
-        else:
-            self.test()
 
     def simulation(self, neuron_values):
         f, p, e, t = self.env.play(pcont=neuron_values)
         return f
+
+    def individual_gain(self, neuron_values):
+        f, p, e, t = self.env.play(pcont=neuron_values)
+        return p - e
 
     def fitness_eval(self, population):
         return np.array([self.simulation(individual) for individual in population])
@@ -152,7 +155,6 @@ class Specialist():
             x_norm = 0.0000000001
         return x_norm
 
-
     def selection(self, new_population, new_fitness_population):
         # TODO: REWRITE
         p = np.array([self.normalize(pop, new_fitness_population) for pop in range(len(new_population))])
@@ -184,9 +186,9 @@ class Specialist():
             with open(self.experiment_name + '/results.txt', 'r') as f:
                 for line in f:
                     l = line
-                generation_number = int(l.strip().split()[1][:-1])
+                generation_number = int(l.strip().split()[1][:-1]) + 1
             
-            if generation_number+1 >= self.total_generations:
+            if generation_number >= self.total_generations:
                 print("\n\nAlready fully trained\n\n")
                 return 
 
@@ -238,13 +240,14 @@ class Specialist():
             self.env.update_solutions(solutions)
             self.env.save_state()
 
-            # add mean for updating
-            self.m.append(np.mean(population, axis=0))
-            mean = self.m[-1]
-            prev_m = self.m[-2] if len(self.m) > 1 else mean
+            if self.mutation_type == "correlated":
+                # add mean for updating
+                self.m.append(np.mean(population, axis=0))
+                mean = self.m[-1]
+                prev_m = self.m[-2] if len(self.m) > 1 else mean
 
-            # update for CMA
-            self.update_evolution_paths(mean, prev_m, population)
+                # update for CMA
+                self.update_evolution_paths(mean, prev_m, population)
 
     def parse_args(self):
         parser = argparse.ArgumentParser()
@@ -319,25 +322,24 @@ class Specialist():
         self.experiment_name += f'_mutationtype={self.mutation_type}'
 
 
-        # MAG DIT WEG?
-        # if self.mutation_type == 'uncorrelated':
-        #     self.experiment_name += f'_mutationstepsize={self.mutation_stepsize}'
-        #     self.experiment_name += f'_mutationthreshold={self.mutation_threshold}'
-        #     self.experiment_name += f'_sinit={self.s_init}'
-        # elif self.mutation_type == 'correlated':
-        #     self.c_sigma = args.c_sigma  # Learning rate for the step-size path
-        #     self.c_c = args.c_c          # Learning rate for the covariance matrix path
-        #     self.c_1 = args.c_1          # Learning rate for the covariance matrix update
-        #     self.c_mu = args.c_mu        # Learning rate for the covariance matrix update
-        #     self.d_sigma = args.d_sigma  # Damping for the step-size update
-        #     self.sigma = args.sigma_init_corr # Initial step size
+        if self.mutation_type == 'uncorrelated':
+            self.experiment_name += f'_mutationstepsize={self.mutation_stepsize}'
+            self.experiment_name += f'_mutationthreshold={self.mutation_threshold}'
+            self.experiment_name += f'_sinit={self.s_init}'
+        elif self.mutation_type == 'correlated':
+            self.c_sigma = args.c_sigma  # Learning rate for the step-size path
+            self.c_c = args.c_c          # Learning rate for the covariance matrix path
+            self.c_1 = args.c_1          # Learning rate for the covariance matrix update
+            self.c_mu = args.c_mu        # Learning rate for the covariance matrix update
+            self.d_sigma = args.d_sigma  # Damping for the step-size update
+            self.sigma = args.sigma_init_corr # Initial step size
 
-        #     self.experiment_name += f'_csigma={self.c_sigma}'
-        #     self.experiment_name += f'_cc={self.c_c}'
-        #     self.experiment_name += f'_c1={self.c_1}'
-        #     self.experiment_name += f'_cmu={self.c_mu}'
-        #     self.experiment_name += f'_dsigma={self.d_sigma}'
-        #     self.experiment_name += f'_sigma={self.sigma}'
+            self.experiment_name += f'_csigma={self.c_sigma}'
+            self.experiment_name += f'_cc={self.c_c}'
+            self.experiment_name += f'_c1={self.c_1}'
+            self.experiment_name += f'_cmu={self.c_mu}'
+            self.experiment_name += f'_dsigma={self.d_sigma}'
+            self.experiment_name += f'_sigma={self.sigma}'
 
         if self.kaiming:
             self.experiment_name += f'_init=kaiming'
@@ -346,12 +348,14 @@ class Specialist():
 
         return
 
-    def test(self):
+    def test(self, type="fitness"):
         self.env.enemies = [self.enemy_test]
         if self.visualise_best:
             self.env.visuals = True 
             self.env.speed = "normal" 
             self.env.headless = False
+        else:
+            os.environ["SDL_VIDEODRIVER"] = "dummy"
 
         best_individual_path = os.path.join(self.experiment_name, 'best.txt')
         if not os.path.exists(best_individual_path):
@@ -360,12 +364,18 @@ class Specialist():
         best_individual = np.loadtxt(best_individual_path)
 
         # Simulate the environment with the best individual
-        fitness_scores = []
+        scores = []
         for enemy in self.enemy_test:
             self.env.enemies = [enemy]
-            fitness_scores.append(self.simulation(best_individual))
-            print(f"Fitness of the best individual against enemy {enemy}: {fitness_scores[-1]}")
-        return fitness_scores
+            if type == "fitness":
+                scores.append(self.simulation(best_individual))
+                print(f"Fitness of the best individual against enemy {enemy}: {scores[-1]}")
+            elif type == "individual gain":
+                scores.append(self.individual_gain(best_individual))
+                print(f"Fitness of the best individual against enemy {enemy}: {scores[-1]}")
+            else:
+                raise NotImplementedError
+        return scores
 
 if __name__ == '__main__':
     specialist = Specialist()
