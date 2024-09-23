@@ -128,7 +128,7 @@ def tournament_selection(population, fitnesses):
     selected_fitness = []
     n = population.shape[0] 
 
-    k = 20
+    k = 30
     for _ in range(int(n)):
         temp = list(zip(population, fitnesses))
         np.random.shuffle(temp)

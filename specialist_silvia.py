@@ -134,9 +134,12 @@ class Specialist():
     def crossover(self, parents):
         total_offspring = np.zeros((0, self.n_vars))
 
-        for i in range(0, len(parents), 2):
+        for i in range(len(parents)):
             p1 = parents[i]
-            p2 = parents[i+1]
+            if i == len(parents) - 1:
+                p2 = parents[0]
+            else:
+                p2 = parents[i+1]
 
             cross_prop = 0.5
             offspring = p1 * cross_prop + p2 * (1 - cross_prop)
