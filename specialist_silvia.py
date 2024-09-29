@@ -17,20 +17,19 @@ class Specialist():
             os.makedirs(self.experiment_name)
 
         if self.mutation_type == 'uncorrelated':
-            controller = uncorrelated_controller(self.n_hidden_neurons, self.mutation_stepsize)
+            self.controller = uncorrelated_controller(self.n_hidden_neurons, self.mutation_stepsize)
         else:
-            controller = player_controller(self.n_hidden_neurons)
+            self.controller = player_controller(self.n_hidden_neurons)
 
         self.env = Environment(experiment_name=self.experiment_name,
                 enemies=[self.enemy_train],
                 playermode="ai",
-                player_controller=controller,
+                player_controller=self.controller,
                 enemymode="static",
                 level=2,
                 speed="fastest",
                 visuals=False)
         self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5 + self.mutation_stepsize
-
         if self.mutation_type == 'correlated':
             # CMA-ES State
             self.p_sigma = np.zeros(self.n_vars)
@@ -41,6 +40,11 @@ class Specialist():
         if self.trainmode:
             os.environ["SDL_VIDEODRIVER"] = "dummy"
             self.train()
+        elif self.testing:
+            self.test()
+
+    def _get_name(self):
+        return self.experiment_name
 
     def simulation(self, neuron_values):
         f, p, e, t = self.env.play(pcont=neuron_values)
@@ -77,9 +81,9 @@ class Specialist():
 
         return total_weights
 
-    def mutation(self, child, p_mutation=0.2):
+    def mutation(self, child):
         """Expects a single child as input and mutates it."""
-        if np.random.uniform() > p_mutation:
+        if np.random.uniform() > self.mutation_probability:
             return child
 
         if self.mutation_type == 'uncorrelated':
@@ -113,7 +117,7 @@ class Specialist():
             child_mutated = np.random.multivariate_normal(mean=child, cov=self.sigma**2 * self.C)
         elif self.mutation_type == 'addition':
             # to check old behavior
-            child_mutated = [i + np.random.normal(0, 1) if np.random.uniform() <= p_mutation else i for i in range(len(child))]
+            child_mutated = [i + np.random.normal(0, 1) if np.random.uniform() <= self.mutation_probability else i for i in range(len(child))]
 
         child_mutated = np.clip(child_mutated, self.lowerbound, self.upperbound)
         return child_mutated
@@ -148,37 +152,60 @@ class Specialist():
 
         return total_offspring
 
-    def normalize(self, pop, fit):
-
-        if (max(fit) - min(fit) ) > 0:
-            x_norm = (pop - min(fit))/(max(fit) - min(fit))
-        else:
-            x_norm = 0
-        if x_norm <= 0:
-            x_norm = 0.0000000001
-        return x_norm
-
     def selection(self, new_population, new_fitness_population):
         # TODO: REWRITE
-        p = np.array([self.normalize(pop, new_fitness_population) for pop in range(len(new_population))])
-        p = p / p.sum()
-        fit_pop_cp = new_fitness_population
-        fit_pop_norm =  np.array(list(map(lambda y: self.normalize(y,fit_pop_cp), new_fitness_population))) # avoiding negative probabilities, as fitness is ranges from negative numbers
-        probs = (fit_pop_norm)/(fit_pop_norm).sum()
+        fitness = np.clip(new_fitness_population, 1e-10, None)
+        probs = (fitness)/np.sum(fitness)
         chosen = np.random.choice(new_population.shape[0], self.population_size , p=probs, replace=False)
-        # print(chosen)
-        chosen = np.append(chosen[1:],np.argmax(new_fitness_population))
-        # print("Chosen", chosen, chosen.shape)
         pop = new_population[chosen]
         fit_pop = new_fitness_population[chosen]
+        print(len(pop))
 
         return pop, fit_pop
 
     def train(self):
         # if no earlier training is done:
+
         if not os.path.exists(self.experiment_name+'/results.txt'):
-            population = self.initialize()
-            generation_number = 0
+
+            experiment_name2 = self.experiment_name.split("_")
+            experiment_name2[3] = "gens=100"
+            experiment_name2 = "_".join(experiment_name2)
+            if not os.path.exists(experiment_name2+'/results.txt'):
+
+                population = self.initialize()
+                generation_number = 0
+            else:
+                self.env = Environment(experiment_name=experiment_name2,
+                    enemies=[self.enemy_train],
+                    playermode="ai",
+                    player_controller=self.controller,
+                    enemymode="static",
+                    level=2,
+                    speed="fastest",
+                    visuals=False)
+                self.env.load_state()
+                population = self.env.solutions[0]
+                print(f"Found earlier state for: {self.experiment_name}")
+
+                self.env = Environment(experiment_name=self.experiment_name,
+                    enemies=[self.enemy_train],
+                    playermode="ai",
+                    player_controller=self.controller,
+                    enemymode="static",
+                    level=2,
+                    speed="fastest",
+                    visuals=False)
+
+                # find generation we left of at:
+                with open(experiment_name2 + '/results.txt', 'r') as f:
+                    for line in f:
+                        l = line
+                    generation_number = int(l.strip().split()[1][:-1]) + 1
+
+                if generation_number >= self.total_generations:
+                    print("\n\nAlready fully trained\n\n")
+                    return
 
         else:
             print(f"Found earlier state for: {self.experiment_name}")
@@ -190,10 +217,10 @@ class Specialist():
                 for line in f:
                     l = line
                 generation_number = int(l.strip().split()[1][:-1]) + 1
-            
+
             if generation_number >= self.total_generations:
                 print("\n\nAlready fully trained\n\n")
-                return 
+                return
 
             if self.mutation_type == 'correlated':
                 with np.load(self.experiment_name + '/CMA_params.npz') as CMA_params:
@@ -217,7 +244,7 @@ class Specialist():
             new_population = np.vstack((population, offspring))
 
             # evaluate new population
-            new_fitness_population = self.fitness_eval(new_population)
+            new_fitness_population = np.hstack((fitness_population, self.fitness_eval(offspring)))
 
             # select
             population, fitness_population = self.selection(new_population, new_fitness_population)
@@ -276,8 +303,9 @@ class Specialist():
         parser.add_argument('-t', '--train', action="store_true", help='Train EA')
         parser.add_argument('-is', '--intermediate_save', action="store_true", help="Don't automaticaly save states.")
         parser.add_argument('-v', '--visualise_best', action="store_true", help="Shows the character when testing")
+        parser.add_argument('-mp', '--mutation_probability', type=float, default=0.5, help="probability an individual gets mutated")
+        parser.add_argument('-te', '--test', action="store_true", help="Tests the selected bot / enemies")
 
-        
         args = parser.parse_args()
         self.population_size = args.population_size
         self.total_generations = args.total_generations
@@ -294,6 +322,8 @@ class Specialist():
         self.trainmode = args.train
         self.intermediate_save = args.intermediate_save
         self.visualise_best = args.visualise_best
+        self.mutation_probability = args.mutation_probability
+        self.testing = args.test
 
         # CMA-ES Parameters
         if self.mutation_type == 'correlated':
@@ -323,6 +353,7 @@ class Specialist():
         self.experiment_name += f'_u={self.upperbound}'
         self.experiment_name += f'_l={self.lowerbound}'
         self.experiment_name += f'_mutationtype={self.mutation_type}'
+        self.experiment_name += f'_mutationprobability={self.mutation_probability}'
 
 
         if self.mutation_type == 'uncorrelated':
@@ -351,7 +382,7 @@ class Specialist():
 
         return
 
-    def test(self, type="fitness"):
+    def test(self, type="individual gain"):
         self.env.enemies = [self.enemy_test]
         if self.visualise_best:
             self.env.visuals = True 
