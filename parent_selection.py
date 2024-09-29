@@ -1,18 +1,5 @@
 import numpy as np
 
-# # dummy values for testing
-# lowerbound = -1
-# upperbound = 1
-# population_size = 200
-# n_vars = 265
-# generation_num=100
-
-# # population is (100, 265) with real values ranging from -1 to 1
-# population = np.random.uniform(lowerbound, upperbound, (population_size, n_vars))
-# fitness_population = np.random.uniform(50, 100, population_size)
-# # end dummy values for testing
-
-
 
 def roulette_wheel_selection(population, fitnesses):
     selected_individuals = []
@@ -25,44 +12,16 @@ def roulette_wheel_selection(population, fitnesses):
         alpha = np.random.uniform(0, total_fitness)
         cumulative_sum = 0
         j = 0
-        
+
         # selection
         while cumulative_sum < alpha and j < n:
             cumulative_sum += fitnesses[j]
             j += 1
-            
+
         selected_individuals.append(population[j-1])
         selected_fitness.append(fitnesses[j-1])
-    
+
     return np.array(selected_individuals), np.array(selected_fitness)
-
-
-# Does not really work
-# def stochastic_universal_sampling(population, fitnesses):
-#     selected_individuals = []
-#     selected_fitness = []
-#     n = population.shape[0]
-
-#     mean_fitness = np.mean(fitnesses)
-#     alpha = np.random.rand()
-
-#     cumulative_sum = fitnesses[0]
-#     delta = alpha * mean_fitness
-
-#     j = 0
-#     while j < n - 1:
-#         if delta < cumulative_sum:
-#             selected_individuals.append(population[j])
-#             selected_fitness.append(fitnesses[j])
-#             delta += cumulative_sum
-#             break
-#         else:
-#             j += 1
-#             cumulative_sum += fitnesses[j] 
-
-#     return np.array(selected_individuals), np.array(selected_fitness)
-
-
 
 
 def linear_rank_selection(population, fitnesses):
@@ -89,9 +48,8 @@ def linear_rank_selection(population, fitnesses):
                         selected_individuals.append(population[j])
                         selected_fitness.append(fitnesses[j])
                     break
-    
-    return np.array(selected_individuals), np.array(selected_fitness)
 
+    return np.array(selected_individuals), np.array(selected_fitness)
 
 
 def exponential_rank_selection(population, fitnesses):
@@ -110,7 +68,6 @@ def exponential_rank_selection(population, fitnesses):
     for i in range(n):
         probs[i] = 1.0 * np.exp( - ranks[i] / c)
 
-
     for _ in range(int(n)):
         alpha = np.random.uniform(1 / 9 * c, 2 / c)
         for j in range(n):
@@ -120,7 +77,6 @@ def exponential_rank_selection(population, fitnesses):
                 break
 
     return np.array(selected_individuals), np.array(selected_fitness)
-
 
 
 def tournament_selection(population, fitnesses):
@@ -143,9 +99,8 @@ def tournament_selection(population, fitnesses):
     return np.array(selected_individuals), np.array(selected_fitness)
 
 
-
 def selection_score(population, fitness_population, generation):
-    ''' 
+    '''
     Selection based on the dynamic approach from
     'Parent Selection Operators for Genetic Algorithms'
     Input: current population, current generation number, fitness of current population
@@ -159,27 +114,22 @@ def selection_score(population, fitness_population, generation):
     # Hamming distance is binary so we use Manhattan distance instead
     for individual in population:
         criteria1 += np.sum(np.abs(best - individual))
-        #np.linalg.norm(best - individual)
-    criteria1 /=  pop_size # normalize
-    criteria1 = np.exp(- criteria1 / generation) # decrease over generations
+    criteria1 /=  pop_size  # normalize
+    criteria1 = np.exp(- criteria1 / generation)  # decrease over generations
 
     max_fitness = np.max(fitness_population)
     min_fitness = np.min(fitness_population)
-    criteria2 = max_fitness / (max_fitness **2 + min_fitness**2) # maximisation problem
-    
+    criteria2 = max_fitness / (max_fitness **2 + min_fitness**2)  # maximisation problem
+
     criterion = 1/generation * criteria1 + ((generation-1)/generation) * criteria2
 
     return criterion
-
 
 
 def dynamic_selection(population, fitnesses, generation):
 
     rws_population, rws_fitness = roulette_wheel_selection(population, fitnesses)
     rws_score = selection_score(rws_population, rws_fitness, generation)
-
-    # sus_population, sus_fitness = stochastic_universal_sampling(population, fitnesses)
-    # sus_score = selection_score(sus_population, sus_fitness, generation)
 
     lrs_population, lrs_fitness = linear_rank_selection(population, fitnesses)
     lrs_score = selection_score(lrs_population, lrs_fitness, generation)
@@ -192,24 +142,8 @@ def dynamic_selection(population, fitnesses, generation):
 
     scores = [rws_score, lrs_score, ers_score, tos_score]
     new_populations = [rws_population, lrs_population, ers_population, tos_population]
-    # new_fitnesses = [rws_fitness, lrs_fitness, ers_fitness, tos_fitness]
     best = np.argmax(scores)
-    
-    # score_names = ["rws_score", "lrs_score", "ers_score", "tos_score"]
-    # print(f"returing {score_names[best]} scores")
+
     shuffled_population = np.random.permutation(new_populations[best])
 
-    return shuffled_population#, new_fitnesses[best]
-
-
-# leave out truncation selection because it is not often used in practice and only for 
-# very large populations
-
-# for generation in range(1,100):
-#     pop = dynamic_selection(population, fitness_population, generation)
-#     print(generation, pop)
-# print(parent_selection(population, generation_num, fitness_population))
-# print(roulette_wheel_selection(population, fitness_population).shape)
-# dynamic_selection(population, fitness_population, generation_num)
-
-# print(population[0], population[1])
+    return shuffled_population

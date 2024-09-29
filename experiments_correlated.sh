@@ -12,7 +12,7 @@ for etr in "${etr_values[@]}"; do
         exp_name="run${i}"
         echo "Running experiment with: $exp_name and -etr: $etr"
         
-        python specialist_silvia.py -k -m correlated -t -exp "$exp_name" -etr "$etr" -tg 200&
+        python specialist_group123.py -k -m correlated -t -exp "$exp_name" -etr "$etr" -tg 200&
         
         if (( $(jobs -r | wc -l) >= max_jobs )); then
             wait -n  

@@ -167,7 +167,8 @@ class Specialist():
         # if no earlier training is done:
 
         if not os.path.exists(self.experiment_name+'/results.txt'):
-
+            
+            # See if there is a run with 100 runs before continuing with 200
             experiment_name2 = self.experiment_name.split("_")
             experiment_name2[3] = "gens=100"
             experiment_name2 = "_".join(experiment_name2)
@@ -342,12 +343,6 @@ class Specialist():
         self.experiment_name = 'experiments/' + args.experiment_name
         self.experiment_name += f'_popusize={self.population_size}'
         self.experiment_name += f'_enemy={self.enemy_train}'
-
-        # if self.trainmode:
-        #     self.experiment_name += '_mode=train'
-        # else:
-        #     self.experiment_name += '_mode=test'
-
         self.experiment_name += f'_gens={self.total_generations}'
         self.experiment_name += f'_hiddensize={self.n_hidden_neurons}'
         self.experiment_name += f'_u={self.upperbound}'
