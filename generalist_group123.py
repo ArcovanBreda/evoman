@@ -71,8 +71,52 @@ class Generalist():
         if self.mutation_type == "uncorrelated":
             _, params = population.shape
             population = population[:, :params - self.mutation_stepsize]
+        return np.array([self.simulation(individual) for individual in population])[:, 0], None
+    
+    def dynamic_fitness_rules(self, population):
+        # remove step sizes from individuals when using controller
+        if self.mutation_type == "uncorrelated":
+            _, params = population.shape
+            population = population[:, :params - self.mutation_stepsize]
+        
+        values = np.array([self.simulation(individual) for individual in population])
+        fitness_original = values[:, 0]
+        ps = values[:, 1]
+        es = values[:, 2]
+        ts = values[:, 3]
 
-        return np.array([self.simulation(individual) for individual in population])
+        fitness_custom = None #TODO
+        return fitness_original, fitness_custom
+
+    def _vis_weights_fitness(self):
+        raise NotImplementedError #TODO also create a plot with the values to show fitness func over time for gradual
+
+    def _weights_fitness_gradual(self, constant_gens=15, change_gens=10):
+        """Calculates self.wfg (3, self.total_generations), containing
+           the parameter values per generation for dynamic_fitness_gradual."""
+        # for x gens, keep a constant value
+        # then for y gens, interchange 2 values
+        # then for x gens, keep a constant value
+        # same for y gens, change again and keep 3 values equal for final gens?
+
+        self.wfg = None
+        raise NotImplementedError 
+
+    def dynamic_fitness_gradual(self, population):
+        # remove step sizes from individuals when using controller
+        if self.mutation_type == "uncorrelated":
+            _, params = population.shape
+            population = population[:, :params - self.mutation_stepsize]
+
+        values = np.array([self.simulation(individual) for individual in population])
+        fitness_original = values[:, 0]
+        ps = values[:, 1]
+        es = values[:, 2]
+        ts = values[:, 3]
+
+        fitness_custom = self.wfg[0, self.generation_number] * ps + self.wfg[1, self.generation_number] * es + self.wfg[2, self.generation_number] * ts
+
+        return fitness_original, fitness_custom
 
     def initialize(self):
         if self.kaiming:
@@ -168,15 +212,16 @@ class Generalist():
 
         return total_offspring
 
-    def selection(self, new_population, new_fitness_population):
-        # TODO: REWRITE
-        fitness = np.clip(new_fitness_population, 1e-10, None)
-        probs = (fitness)/np.sum(fitness)
+    def selection(self, new_population, new_fitness_population, new_fitness_population_custom):
+        # TODO: REWRITE -> ???
+        fitness = np.clip(new_fitness_population_custom if self.use_custom else new_fitness_population, 1e-10, None)
+        probs = (fitness) / np.sum(fitness)
         chosen = np.random.choice(new_population.shape[0], self.population_size , p=probs, replace=False)
         pop = new_population[chosen]
         fit_pop = new_fitness_population[chosen]
+        fit_pop_custom = new_fitness_population_custom[chosen] if self.use_custom else None
 
-        return pop, fit_pop
+        return pop, fit_pop, fit_pop_custom
 
     def train(self):
         # if no earlier training is done:
@@ -243,12 +288,14 @@ class Generalist():
                     self.C = CMA_params['C']
                     self.m = list(CMA_params['m'])
 
-        fitness_population = self.fitness_eval(population)[:, 0]
+        fitness_population, fitness_custom = self.fitness_func(population)
+        self.use_custom = True if fitness_custom else False #TODO can probably be init when self.fitness_func gets init oh well
+
         # Evolution loop
         for gen_idx in tqdm.tqdm(range(generation_number, self.total_generations)):
             self.generation_number = gen_idx
             # create parents
-            parents = dynamic_selection(population, fitness_population, self.generation_number+1)
+            parents = dynamic_selection(population, fitness_custom if self.use_custom else fitness_population, self.generation_number+1)
 
             # create new population (consisting of offspring)
             offspring = self.crossover(parents)
@@ -257,10 +304,12 @@ class Generalist():
             new_population = np.vstack((population, offspring))
 
             # evaluate new population
-            new_fitness_population = np.hstack((fitness_population, self.fitness_eval(offspring)[:, 0]))
+            fitness_offspring, fitness_offspring_custom = self.fitness_func(offspring)
+            new_fitness_population =  np.hstack((fitness_population, fitness_offspring))
+            new_fitness_population_custom = np.hstack((fitness_custom, fitness_offspring_custom)) if self.use_custom else None
 
             # select
-            population, fitness_population = self.selection(new_population, new_fitness_population)
+            population, fitness_population, fitness_custom = self.selection(new_population, new_fitness_population, new_fitness_population_custom)
 
             # save metrics for post-hoc evaluation
             best = np.argmax(fitness_population)
@@ -278,6 +327,22 @@ class Generalist():
                 if self.mutation_type == 'correlated':
                     np.savez(self.experiment_name + '/CMA_params.npz',
                             p_sigma=self.p_sigma, p_c=self.p_c, C=self.C, m=self.m)
+                
+                if self.use_custom:
+                    # take best fitness from custom fitness population (does not need to be the best from baseline fitness population)
+                    best = np.argmax(fitness_custom)
+                    mean = np.mean(fitness_custom)
+                    std  = np.std(fitness_custom)
+
+                    with open(self.experiment_name + '/custom_fitness_results.txt', 'a') as f:
+                        # print(f"Best Baseline Fitness wrt Custom Fitness Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}" )
+                        # f.write(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}\n")
+
+                        print(f"(Custom fitness) Generation {gen_idx}: {fitness_custom[best]:.5f} {mean:.5f} {std:.5f}" )
+                        f.write(f"Generation {gen_idx}: {fitness_custom[best]:.5f} {mean:.5f} {std:.5f}\n")
+
+                    np.savetxt(self.experiment_name + '/custom_fitness_best.txt', population[best])
+
 
             solutions = [population, fitness_population]
             self.env.update_solutions(solutions)
@@ -316,8 +381,9 @@ class Generalist():
         parser.add_argument('-t', '--train', action="store_true", help='Train EA')
         parser.add_argument('-is', '--intermediate_save', action="store_true", help="Don't automaticaly save states.")
         parser.add_argument('-v', '--visualise_best', action="store_true", help="Shows the character when testing")
-        parser.add_argument('-mp', '--mutation_probability', type=float, default=0.5, help="probability an individual gets mutated")
+        parser.add_argument('-mp', '--mutation_probability', type=float, default=0.5, help="Probability an individual gets mutated")
         parser.add_argument('-te', '--test', action="store_true", help="Tests the selected bot / enemies")
+        parser.add_argument('-ff', '--fitness_function', default='default', choices=['default', 'dyna_rules', 'dyna_gradual'], help='Choose a fitness function')
 
         args = parser.parse_args()
         self.population_size = args.population_size
@@ -337,6 +403,14 @@ class Generalist():
         self.visualise_best = args.visualise_best
         self.mutation_probability = args.mutation_probability
         self.testing = args.test
+
+        if args.fitness_function == "default":
+            self.fitness_func = self.fitness_eval
+        elif args.fitness_function == "dyna_rules":
+            self.fitness_func = self.dynamic_fitness_rules
+        elif args.fitness_function == "dyna_gradual":
+            self.fitness_func = self.dynamic_fitness_gradual
+            self._weights_fitness_gradual()
 
         # CMA-ES Parameters
         if self.mutation_type == 'correlated':
@@ -361,7 +435,7 @@ class Generalist():
         self.experiment_name += f'_l={self.lowerbound}'
         self.experiment_name += f'_mutationtype={self.mutation_type}'
         self.experiment_name += f'_mutationprobability={self.mutation_probability}'
-
+        self.experiment_name += f'_fitness_func={args.fitness_function}' #TODO idk if this messes up plot code
 
         if self.mutation_type == 'uncorrelated':
             self.experiment_name += f'_mutationstepsize={self.mutation_stepsize}'
