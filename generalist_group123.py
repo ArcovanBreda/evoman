@@ -68,17 +68,15 @@ class Generalist():
 
     def fitness_eval(self, population):
         # remove step sizes from individuals when using controller
-        print("Using: default fitness_eval") #TODO
-
         if self.mutation_type == "uncorrelated":
             _, params = population.shape
             population = population[:, :params - self.mutation_stepsize]
 
-        fitness, _, _, _ = np.array([self.simulation(individual) for individual in population])
-        return fitness, None #TODO zijn er wel 2 return waardes nodig?
+        fitness = np.array([self.simulation(individual) for individual in population])[:, 0]
+        # return fitness, None #TODO zijn er wel 2 return waardes nodig?
+        return fitness  #TODO zijn er wel 2 return waardes nodig? want testen pakt direct al self.simulation & self.individual_gain
     
     def dynamic_fitness_rules(self, population):
-        print("Using: dynamic_fitness_rules") #TODO
         # remove step sizes from individuals when using controller
         if self.mutation_type == "uncorrelated":
             _, params = population.shape
@@ -86,23 +84,38 @@ class Generalist():
         
         #TODO hier al return waardes opvangen van simulation en bewerken?
         #TODO 2 waardes returnen, de f van self.simulation als eerste en f_custom als tweede
-        fitness_original, ps, es, ts = np.array([self.simulation(individual) for individual in population])
+        values = np.array([self.simulation(individual) for individual in population])
+        # fitness_original = values[:, 0]
+        ps = values[:, 1]
+        es = values[:, 2]
+        ts = values[:, 3]
+
         fitness_custom = None
 
-        return fitness_original, fitness_custom  #TODO zijn er wel 2 return waardes nodig?
+        # return fitness_original, fitness_custom  #TODO zijn er wel 2 return waardes nodig?
+        return fitness_custom  #TODO zijn er wel 2 return waardes nodig? want testen pakt direct al self.simulation & self.individual_gain
+
+    def _weights_fitness_gradual(self):
+        self.wfg = None
+        raise NotImplementedError 
 
     def dynamic_fitness_gradual(self, population):
-        print("Using: dynamic_fitness_gradual") #TODO
         # remove step sizes from individuals when using controller
         if self.mutation_type == "uncorrelated":
             _, params = population.shape
             population = population[:, :params - self.mutation_stepsize]
         #TODO of hier de dynamische fitness funcs doen dus niet direct die self.simulation(individual zo storen, maar hier dan de fitness berekenen?)
         #TODO 2 waardes returnen, de f van self.simulation als eerste en f_custom als tweede
-        fitness_original, ps, es, ts = np.array([self.simulation(individual) for individual in population])
-        fitness_custom = None
+        values = np.array([self.simulation(individual) for individual in population])
+        # fitness_original = values[:, 0] #TODO can maybe instead store these in the object itself or smthng
+        ps = values[:, 1]
+        es = values[:, 2]
+        ts = values[:, 3]
 
-        return fitness_original, fitness_custom #TODO zijn er wel 2 return waardes nodig?
+        fitness_custom = self.wfg[0, self.generation_number] * ps + self.wfg[1, self.generation_number] * es + self.wfg[2, self.generation_number] * ts
+
+        return fitness_custom  #TODO zijn er wel 2 return waardes nodig? want testen pakt direct al self.simulation & self.individual_gain
+        # return fitness_original, fitness_custom  #TODO zijn er wel 2 return waardes nodig? want testen pakt direct al self.simulation & self.individual_gain
 
     def initialize(self):
         if self.kaiming:
@@ -273,7 +286,8 @@ class Generalist():
                     self.C = CMA_params['C']
                     self.m = list(CMA_params['m'])
 
-        fitness_population, fitness_popu_custom = self.fitness_func(population) #TODO aanpassen hier
+        fitness_population = self.fitness_func(population) #TODO aanpassen hier
+        # fitness_population, fitness_popu_custom = self.fitness_func(population) #TODO aanpassen hier
         # fitness_population= self.fitness_eval(population)[:, 0]
         #TODO call dyna_fit_pop = ...., so we should collect all of the terms...
 
@@ -290,7 +304,8 @@ class Generalist():
             new_population = np.vstack((population, offspring))
 
             # evaluate new population
-            fitness_offspring, fitness_offspring_custom = self.fitness_func(offspring)
+            fitness_offspring = self.fitness_func(offspring)
+            # fitness_offspring, fitness_offspring_custom = self.fitness_func(offspring)
             # fitness_offspring = self.fitness_eval(offspring)[:, 0]
             #TODO dyna_fit_offspring = ...., so we should collect all of the terms... and probably replace it downwards or smth
 
@@ -353,9 +368,9 @@ class Generalist():
         parser.add_argument('-t', '--train', action="store_true", help='Train EA')
         parser.add_argument('-is', '--intermediate_save', action="store_true", help="Don't automaticaly save states.")
         parser.add_argument('-v', '--visualise_best', action="store_true", help="Shows the character when testing")
-        parser.add_argument('-mp', '--mutation_probability', type=float, default=0.5, help="probability an individual gets mutated")
+        parser.add_argument('-mp', '--mutation_probability', type=float, default=0.5, help="Probability an individual gets mutated")
         parser.add_argument('-te', '--test', action="store_true", help="Tests the selected bot / enemies")
-        parser.add_argument('-ff', '--fitness_function', default='default', choices=['default', 'dyna_rules', 'dyna_gradual'])
+        parser.add_argument('-ff', '--fitness_function', default='default', choices=['default', 'dyna_rules', 'dyna_gradual'], help='Choose a fitness function')
 
         args = parser.parse_args()
         self.population_size = args.population_size
@@ -381,7 +396,8 @@ class Generalist():
         elif args.fitness_function == "dyna_rules":
             self.fitness_func = self.dynamic_fitness_rules
         elif args.fitness_function == "dyna_gradual":
-            self.fitness_func = self.dynamic_fitness_gradual
+            self.fitness_func = self.dynamic_fitness_gradual #TODO add the fitness func to the exp name for safety?
+            self._weights_fitness_gradual()
 
         # CMA-ES Parameters
         if self.mutation_type == 'correlated':
