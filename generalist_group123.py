@@ -85,7 +85,7 @@ class Generalist():
         es = values[:, 2]
         ts = values[:, 3]
 
-        fitness_custom = None
+        fitness_custom = None #TODO
         return fitness_original, fitness_custom
 
     def _vis_weights_fitness(self):
@@ -289,7 +289,7 @@ class Generalist():
                     self.m = list(CMA_params['m'])
 
         fitness_population, fitness_custom = self.fitness_func(population)
-        self.use_custom = True if fitness_custom else False
+        self.use_custom = True if fitness_custom else False #TODO can probably be init when self.fitness_func gets init oh well
 
         # Evolution loop
         for gen_idx in tqdm.tqdm(range(generation_number, self.total_generations)):
@@ -327,6 +327,22 @@ class Generalist():
                 if self.mutation_type == 'correlated':
                     np.savez(self.experiment_name + '/CMA_params.npz',
                             p_sigma=self.p_sigma, p_c=self.p_c, C=self.C, m=self.m)
+                
+                if self.use_custom:
+                    # take best fitness from custom fitness population (does not need to be the best from baseline fitness population)
+                    best = np.argmax(fitness_custom)
+                    mean = np.mean(fitness_custom)
+                    std  = np.std(fitness_custom)
+
+                    with open(self.experiment_name + '/custom_fitness_results.txt', 'a') as f:
+                        # print(f"Best Baseline Fitness wrt Custom Fitness Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}" )
+                        # f.write(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}\n")
+
+                        print(f"(Custom fitness) Generation {gen_idx}: {fitness_custom[best]:.5f} {mean:.5f} {std:.5f}" )
+                        f.write(f"Generation {gen_idx}: {fitness_custom[best]:.5f} {mean:.5f} {std:.5f}\n")
+
+                    np.savetxt(self.experiment_name + '/custom_fitness_best.txt', population[best])
+
 
             solutions = [population, fitness_population]
             self.env.update_solutions(solutions)
@@ -393,7 +409,7 @@ class Generalist():
         elif args.fitness_function == "dyna_rules":
             self.fitness_func = self.dynamic_fitness_rules
         elif args.fitness_function == "dyna_gradual":
-            self.fitness_func = self.dynamic_fitness_gradual #TODO add the fitness func to the exp name for safety?
+            self.fitness_func = self.dynamic_fitness_gradual
             self._weights_fitness_gradual()
 
         # CMA-ES Parameters
@@ -419,6 +435,7 @@ class Generalist():
         self.experiment_name += f'_l={self.lowerbound}'
         self.experiment_name += f'_mutationtype={self.mutation_type}'
         self.experiment_name += f'_mutationprobability={self.mutation_probability}'
+        self.experiment_name += f'_fitness_func={args.fitness_function}' #TODO idk if this messes up plot code
 
         if self.mutation_type == 'uncorrelated':
             self.experiment_name += f'_mutationstepsize={self.mutation_stepsize}'
