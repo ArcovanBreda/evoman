@@ -8,7 +8,7 @@ import os
 import tqdm
 
 
-class Specialist():
+class Generalist():
     def __init__(self) -> None:
         self.parse_args()
 
@@ -18,13 +18,28 @@ class Specialist():
         self.controller = player_controller(self.n_hidden_neurons)
 
         self.env = Environment(experiment_name=self.experiment_name,
-                enemies=[self.enemy_train],
+                enemies=[int(en) for en in self.enemy_train.split(",")],
                 playermode="ai",
                 player_controller=self.controller,
                 enemymode="static",
                 level=2,
                 speed="fastest",
-                visuals=False)
+                visuals=False,
+                multiplemode="yes", 
+                randomini="yes", 
+                # logs="yes"
+                )
+                
+        self.global_env = Environment(experiment_name=self.experiment_name,
+                enemies=[1, 2, 3, 4, 5, 6, 7, 8],
+                playermode="ai",
+                player_controller=self.controller,
+                enemymode="static",
+                level=2,
+                speed="fastest",
+                visuals=False,
+                multiplemode="yes", randomini="no")
+        
         self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5 + self.mutation_stepsize
         if self.mutation_type == 'correlated':
             # CMA-ES State
@@ -43,8 +58,9 @@ class Specialist():
         return self.experiment_name
 
     def simulation(self, neuron_values):
-        f, p, e, t = self.env.play(pcont=neuron_values)
-        return f
+        """ Always eval with all enemies for correct logging. """
+        f, p, e, t = self.global_env.play(pcont=neuron_values)
+        return f, p, e, t
 
     def individual_gain(self, neuron_values):
         f, p, e, t = self.env.play(pcont=neuron_values)
@@ -67,7 +83,6 @@ class Specialist():
 
             limit1 = np.sqrt(1 / float(n_inputs))
             limit2 = np.sqrt(2 / float(self.n_hidden_neurons))
-
             weights1 = np.random.normal(0.0, limit1, size=(self.population_size, n_inputs * self.n_hidden_neurons))
             weights2 = np.random.normal(0.0, limit2, size=(self.population_size, self.n_hidden_neurons * n_actions))
 
@@ -112,7 +127,7 @@ class Specialist():
                 child_mutated = (child[:n] + mutations).tolist()
                 child_mutated += sigma_prime.tolist()
             else:
-                raise NotImplementedError
+                raise NotImplementedError("Please set mutation step size to 1 or equal to # parameters")
         elif self.mutation_type == 'correlated':
             # CMA-ES mutation
             child_mutated = np.random.multivariate_normal(mean=child, cov=self.sigma**2 * self.C)
@@ -160,15 +175,12 @@ class Specialist():
         chosen = np.random.choice(new_population.shape[0], self.population_size , p=probs, replace=False)
         pop = new_population[chosen]
         fit_pop = new_fitness_population[chosen]
-        print(len(pop))
 
         return pop, fit_pop
 
     def train(self):
         # if no earlier training is done:
-
         if not os.path.exists(self.experiment_name+'/results.txt'):
-            
             # See if there is a run with 100 runs before continuing with 200
             experiment_name2 = self.experiment_name.split("_")
             experiment_name2[3] = "gens=100"
@@ -231,12 +243,10 @@ class Specialist():
                     self.C = CMA_params['C']
                     self.m = list(CMA_params['m'])
 
-        fitness_population = self.fitness_eval(population)
-
+        fitness_population = self.fitness_eval(population)[:, 0]
         # Evolution loop
         for gen_idx in tqdm.tqdm(range(generation_number, self.total_generations)):
             self.generation_number = gen_idx
-
             # create parents
             parents = dynamic_selection(population, fitness_population, self.generation_number+1)
 
@@ -247,7 +257,7 @@ class Specialist():
             new_population = np.vstack((population, offspring))
 
             # evaluate new population
-            new_fitness_population = np.hstack((fitness_population, self.fitness_eval(offspring)))
+            new_fitness_population = np.hstack((fitness_population, self.fitness_eval(offspring)[:, 0]))
 
             # select
             population, fitness_population = self.selection(new_population, new_fitness_population)
@@ -301,7 +311,7 @@ class Specialist():
         parser.add_argument('-ds', '--d_sigma', type=float, default=0.5, help='Init value for d_sigma (correlated)')
         parser.add_argument('-c1', '--c_1', type=float, default=0.1, help='Init value for c_1 (correlated)')
         parser.add_argument('-cmu', '--c_mu', type=float, default=0.1, help='Init value for c_mu (correlated)')
-        parser.add_argument('-etr', '--enemy_train', type=int, default=2, help='Enemy to fight during training')
+        parser.add_argument('-etr', '--enemy_train', type=str, default="2", help='Enemy to fight during training')
         parser.add_argument('-ete', '--enemy_test', type=str, default='2', help='Enemy to fight during testing (1,3,5)')
         parser.add_argument('-t', '--train', action="store_true", help='Train EA')
         parser.add_argument('-is', '--intermediate_save', action="store_true", help="Don't automaticaly save states.")
@@ -399,7 +409,7 @@ class Specialist():
         for enemy in self.enemy_test:
             self.env.enemies = [enemy]
             if type == "fitness":
-                scores.append(self.simulation(best_individual))
+                scores.append(self.simulation(best_individual)[0])
                 print(f"Fitness of the best individual against enemy {enemy}: {scores[-1]}")
             elif type == "individual gain":
                 scores.append(self.individual_gain(best_individual))
@@ -409,4 +419,4 @@ class Specialist():
         return scores
 
 if __name__ == '__main__':
-    specialist = Specialist()
+    specialist = Generalist()
