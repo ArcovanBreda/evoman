@@ -68,11 +68,41 @@ class Generalist():
 
     def fitness_eval(self, population):
         # remove step sizes from individuals when using controller
+        print("Using: default fitness_eval") #TODO
+
         if self.mutation_type == "uncorrelated":
             _, params = population.shape
             population = population[:, :params - self.mutation_stepsize]
 
-        return np.array([self.simulation(individual) for individual in population])
+        fitness, _, _, _ = np.array([self.simulation(individual) for individual in population])
+        return fitness, None #TODO zijn er wel 2 return waardes nodig?
+    
+    def dynamic_fitness_rules(self, population):
+        print("Using: dynamic_fitness_rules") #TODO
+        # remove step sizes from individuals when using controller
+        if self.mutation_type == "uncorrelated":
+            _, params = population.shape
+            population = population[:, :params - self.mutation_stepsize]
+        
+        #TODO hier al return waardes opvangen van simulation en bewerken?
+        #TODO 2 waardes returnen, de f van self.simulation als eerste en f_custom als tweede
+        fitness_original, ps, es, ts = np.array([self.simulation(individual) for individual in population])
+        fitness_custom = None
+
+        return fitness_original, fitness_custom  #TODO zijn er wel 2 return waardes nodig?
+
+    def dynamic_fitness_gradual(self, population):
+        print("Using: dynamic_fitness_gradual") #TODO
+        # remove step sizes from individuals when using controller
+        if self.mutation_type == "uncorrelated":
+            _, params = population.shape
+            population = population[:, :params - self.mutation_stepsize]
+        #TODO of hier de dynamische fitness funcs doen dus niet direct die self.simulation(individual zo storen, maar hier dan de fitness berekenen?)
+        #TODO 2 waardes returnen, de f van self.simulation als eerste en f_custom als tweede
+        fitness_original, ps, es, ts = np.array([self.simulation(individual) for individual in population])
+        fitness_custom = None
+
+        return fitness_original, fitness_custom #TODO zijn er wel 2 return waardes nodig?
 
     def initialize(self):
         if self.kaiming:
@@ -243,7 +273,10 @@ class Generalist():
                     self.C = CMA_params['C']
                     self.m = list(CMA_params['m'])
 
-        fitness_population = self.fitness_eval(population)[:, 0]
+        fitness_population, fitness_popu_custom = self.fitness_func(population) #TODO aanpassen hier
+        # fitness_population= self.fitness_eval(population)[:, 0]
+        #TODO call dyna_fit_pop = ...., so we should collect all of the terms...
+
         # Evolution loop
         for gen_idx in tqdm.tqdm(range(generation_number, self.total_generations)):
             self.generation_number = gen_idx
@@ -257,7 +290,11 @@ class Generalist():
             new_population = np.vstack((population, offspring))
 
             # evaluate new population
-            new_fitness_population = np.hstack((fitness_population, self.fitness_eval(offspring)[:, 0]))
+            fitness_offspring, fitness_offspring_custom = self.fitness_func(offspring)
+            # fitness_offspring = self.fitness_eval(offspring)[:, 0]
+            #TODO dyna_fit_offspring = ...., so we should collect all of the terms... and probably replace it downwards or smth
+
+            new_fitness_population = np.hstack((fitness_population, fitness_offspring))
 
             # select
             population, fitness_population = self.selection(new_population, new_fitness_population)
@@ -318,6 +355,7 @@ class Generalist():
         parser.add_argument('-v', '--visualise_best', action="store_true", help="Shows the character when testing")
         parser.add_argument('-mp', '--mutation_probability', type=float, default=0.5, help="probability an individual gets mutated")
         parser.add_argument('-te', '--test', action="store_true", help="Tests the selected bot / enemies")
+        parser.add_argument('-ff', '--fitness_function', default='default', choices=['default', 'dyna_rules', 'dyna_gradual'])
 
         args = parser.parse_args()
         self.population_size = args.population_size
@@ -337,6 +375,13 @@ class Generalist():
         self.visualise_best = args.visualise_best
         self.mutation_probability = args.mutation_probability
         self.testing = args.test
+
+        if args.fitness_function == "default":
+            self.fitness_func = self.fitness_eval
+        elif args.fitness_function == "dyna_rules":
+            self.fitness_func = self.dynamic_fitness_rules
+        elif args.fitness_function == "dyna_gradual":
+            self.fitness_func = self.dynamic_fitness_gradual
 
         # CMA-ES Parameters
         if self.mutation_type == 'correlated':
@@ -361,7 +406,6 @@ class Generalist():
         self.experiment_name += f'_l={self.lowerbound}'
         self.experiment_name += f'_mutationtype={self.mutation_type}'
         self.experiment_name += f'_mutationprobability={self.mutation_probability}'
-
 
         if self.mutation_type == 'uncorrelated':
             self.experiment_name += f'_mutationstepsize={self.mutation_stepsize}'
