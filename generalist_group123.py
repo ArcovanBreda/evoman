@@ -58,7 +58,7 @@ class Generalist():
         return self.experiment_name
 
     def simulation(self, neuron_values):
-        """ Always eval with all enemies for correct logging. """
+        """Always eval with all enemies for correct logging."""
         f, p, e, t = self.global_env.play(pcont=neuron_values)
         return f, p, e, t
 
