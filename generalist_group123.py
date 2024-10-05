@@ -1,7 +1,6 @@
 import argparse
 from evoman.environment import Environment
 from demo_controller import player_controller
-from uncorrelated_controller import uncorrelated_controller
 from parent_selection import dynamic_selection
 
 import numpy as np
@@ -16,10 +15,7 @@ class Generalist():
         if not os.path.exists(self.experiment_name):
             os.makedirs(self.experiment_name)
 
-        if self.mutation_type == 'uncorrelated':
-            self.controller = uncorrelated_controller(self.n_hidden_neurons, self.mutation_stepsize)
-        else:
-            self.controller = player_controller(self.n_hidden_neurons)
+        self.controller = player_controller(self.n_hidden_neurons)
 
         self.env = Environment(experiment_name=self.experiment_name,
                 enemies=[int(en) for en in self.enemy_train.split(",")],
@@ -62,7 +58,7 @@ class Generalist():
         return self.experiment_name
 
     def simulation(self, neuron_values):
-        "always eval with all enemies for correct logging"
+        """Always eval with all enemies for correct logging."""
         f, p, e, t = self.global_env.play(pcont=neuron_values)
         return f, p, e, t
 
@@ -71,6 +67,11 @@ class Generalist():
         return p - e
 
     def fitness_eval(self, population):
+        # remove step sizes from individuals when using controller
+        if self.mutation_type == "uncorrelated":
+            _, params = population.shape
+            population = population[:, :params - self.mutation_stepsize]
+
         return np.array([self.simulation(individual) for individual in population])
 
     def initialize(self):
@@ -126,7 +127,7 @@ class Generalist():
                 child_mutated = (child[:n] + mutations).tolist()
                 child_mutated += sigma_prime.tolist()
             else:
-                raise NotImplementedError #TODO everything for k, 1 < k < n should probably contain mapping from sigma to alleles 
+                raise NotImplementedError("Please set mutation step size to 1 or equal to # parameters")
         elif self.mutation_type == 'correlated':
             # CMA-ES mutation
             child_mutated = np.random.multivariate_normal(mean=child, cov=self.sigma**2 * self.C)
