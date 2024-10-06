@@ -56,7 +56,11 @@ class Generalist():
                 speed="fastest",
                 visuals=False,
                 multiplemode="yes", randomini="no")
+
+        self.e_sel_ee, self.e_sel_pe, self.e_sel_t, self.worst_enemies_history = [], [], [], []
+        self.worst_enemies = self.enemy_train[0:2]
         
+
         self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5 + self.mutation_stepsize
         if self.mutation_type == 'correlated':
             # CMA-ES State
@@ -74,32 +78,62 @@ class Generalist():
     def _get_name(self):
         return self.experiment_name
 
-    def simulation(self, neuron_values):
-        "always eval with all enemies for correct logging"
-        f, p, e, t = self.global_env.play(pcont=neuron_values)
-        return f, p, e, t
+    # def simulation(self, neuron_values):
+    #     "always eval with all enemies for correct logging"
+    #     f, p, e, t = self.global_env.play(pcont=neuron_values)
+    #     return f, p, e, t
 
-
-    def individual_simulation(self, neuron_values, return_means=True):
+    def individual_simulation(self, neuron_values):
         fs, ps, es, ts = [], [], [], []
 
-        for enemy in self.enemy_train:
+        for enemy in range(1, 9):  # eval all enemies
             self.testenv.enemies = [enemy]
             f, p, e, t = self.testenv.play(pcont=neuron_values)
             fs.append(f), ps.append(p), es.append(e), ts.append(t)
-            # print(f"Enemy {enemy}: Fitness={f}, Player={p}, Enemy={e}, Time={t}")
-        # print()
-        if return_means:
-            return np.mean(fs), np.mean(ps), np.mean(es), np.mean(ts)
-        else:
-            return np.array(fs), np.array(ps), np.array(es), np.array(ts)
 
-    def individual_gain(self, neuron_values):
-        f, p, e, t = self.env.play(pcont=neuron_values)
-        return p - e
+        return fs, ps, es, ts
 
-    def fitness_eval(self, population, return_means=True):
-        return np.array([self.individual_simulation(individual, return_means=return_means) for individual in population])
+    def fitness_eval_population(self, population):
+        fitness, stats = [], []
+        for individual in tqdm.tqdm(population, leave=True):
+            fitnes, player, enemy, time = self.individual_simulation(individual)
+            fitness.append(np.mean(fitnes))
+            stats.append([player, enemy, time])
+
+        return (np.array(fitness), np.array(stats).transpose(0, 2, 1))
+
+    def enemy_selection(self, ee, pe, t):
+        """init:
+                self.e_sel_ee, self.e_sel_pe, self.e_sel_t, self.worst_enemies_history = [], [], [], []
+                self.worst_enemies = self.enemy_train[0:2]
+                ee = [lenpop, 8] enemy energy Numpy array
+                pe = [lenpop, 8] player energy Numpy array
+                t = [lenpop, 8] time Numpy array
+            returns
+                list with indexes of enmies
+        """
+        # select only ones were training on
+        ee, pe, t, = ee[:, self.enemy_train], pe[:, self.enemy_train], t[:, self.enemy_train]
+        self.e_sel_ee.append(ee)
+        self.e_sel_pe.append(pe)
+        self.e_sel_t.append(t)
+
+        # select new enemies to foccus on if gen % 5 = 0
+        if self.generation_number % 5 == 0 and len(self.e_sel_ee) >= 5:
+            mean_ee = np.mean(np.mean(np.array(self.e_sel_ee[-5:]), axis=1), axis=0)  # see if this overflows ram assuming (5, lenpop, enmies)
+            mean_pe = np.mean(np.mean(np.array(self.e_sel_pe[-5:]), axis=1), axis=0)
+            mean_t = np.mean(np.mean(np.array(self.e_sel_t[-5:]), axis=1), axis=0)
+            # these should be (enmies)
+
+            gain = mean_pe - mean_ee
+            self.worst_enemies = reversed(np.argsort(gain))[0:2]
+            print(f"The new worst enemies are: {self.worst_enemies}")
+            print("History:\n", self.worst_enemies_history)
+
+            self.worst_enemies_history.append(self.worst_enemies)
+
+
+        return self.worst_enemies # return worst two enemies. in range (0,7) NOT (1,8)
 
     def initialize(self):
         if self.kaiming:
@@ -269,11 +303,15 @@ class Generalist():
                     self.C = CMA_params['C']
                     self.m = list(CMA_params['m'])
 
-        stats_population = self.fitness_eval(population, return_means=False)
+        fitness_population, stats_population = self.fitness_eval_population(population)
+        stats_subset_population = self.enemy_selection(stats_population)
+        print(stats_population.shape)
+        print(stats_subset_population.shape)
+        # custom_fitness = self.custom_fitness_function(stats_subset_population)
+
         fitness_population = np.mean(stats_population, axis=-1)[:, 0]
         means_per_enemy = np.mean(stats_population, axis=0)
         print(means_per_enemy.T)
-        # exit()
         print("done with initial evaluation")
         # Evolution loop
         for gen_idx in tqdm.tqdm(range(generation_number, self.total_generations)):
