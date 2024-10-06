@@ -89,18 +89,72 @@ class Generalist():
         return fitness_original, fitness_custom
 
     def _vis_weights_fitness(self):
-        raise NotImplementedError #TODO also create a plot with the values to show fitness func over time for gradual
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(8, 4))
 
-    def _weights_fitness_gradual(self, constant_gens=15, change_gens=10):
-        """Calculates self.wfg (3, self.total_generations), containing
-           the parameter values per generation for dynamic_fitness_gradual."""
-        # for x gens, keep a constant value
-        # then for y gens, interchange 2 values
-        # then for x gens, keep a constant value
-        # same for y gens, change again and keep 3 values equal for final gens?
+        # plot weights for each term in fitness function
+        for i in range(self.wfg.shape[0]):
+            plt.plot(np.array(range(self.total_generations)), self.wfg[i], label=f'Term {i + 1}')
+            # plt.scatter(np.array(range(self.total_generations)), self.wfg[i], label=f'Term {i + 1}')
 
-        self.wfg = None
-        raise NotImplementedError 
+        # plot settings
+        plt.title('Term Weights across Generations', fontsize=18)
+        plt.xlabel('Generations', fontsize=16)
+        plt.ylabel('Weights', fontsize=16)
+        plt.ylim(0, 1)
+        plt.xlim(1, self.total_generations)
+        plt.grid()
+        plt.legend()
+        plt.tight_layout()
+
+        # save plot
+        os.makedirs(self.experiment_name, exist_ok=True)
+        plt.savefig(self.experiment_name + "/weight_distribution.png")
+
+    def _weights_fitness_gradual(self, num_terms=3, gens=[20, 40, 60, 80], epsilon=0.2):
+        """
+           Calculates self.wfg (num_terms, self.total_generations), containing
+           the parameter values per generation for dynamic_fitness_gradual.
+           
+           Args:
+            num_terms - int, number of weights in fitness function
+            gens - list of length 4, contains the generation numbers to hold values constant over
+                   and to gradually change them over
+            epsilon - float, lowest probability
+        """
+        #TODO change the args into cmdline args        
+        # init weights for each generation
+        self.wfg = np.zeros((num_terms, self.total_generations))
+
+        # init for first gens
+        self.wfg[0, :gens[0]] = 1 - epsilon
+        self.wfg[1, :gens[0]] = epsilon / (num_terms - 1)
+
+        # gradual transition
+        steps_1 = np.linspace(1 - epsilon, epsilon / (num_terms - 1), gens[1] - gens[0])
+        self.wfg[0, gens[0]:gens[1]] = steps_1
+        self.wfg[1, gens[0]:gens[1]] = np.flip(steps_1)
+
+        # hold constant
+        self.wfg[0, gens[1]:gens[2]] = np.array([steps_1[-1]] * (gens[2] - gens[1]))
+        self.wfg[1, gens[1]:gens[2]] = np.array([steps_1[0]] * (gens[2] - gens[1]))
+
+        # time term is constant until penultimate gens
+        self.wfg[2, :gens[2]] = epsilon / (num_terms - 1)
+
+        # move them to equal weight
+        end_weight = 1 / num_terms
+        self.wfg[0, gens[2]:gens[3]] = np.linspace(self.wfg[0, gens[2] - 1], end_weight, gens[3] - gens[2])
+        self.wfg[1, gens[2]:gens[3]] = np.linspace(self.wfg[1, gens[2] - 1], end_weight, gens[3] - gens[2])
+        self.wfg[2, gens[2]:gens[3]] = np.linspace(self.wfg[2, gens[2] - 1], end_weight, gens[3] - gens[2])
+
+        # keep constant for final gens
+        self.wfg[0, gens[3]:] = np.array([self.wfg[0, gens[3]-1]] * (self.total_generations - gens[3]))
+        self.wfg[1, gens[3]:] = np.array([self.wfg[1, gens[3]-1]] * (self.total_generations - gens[3]))
+        self.wfg[2, gens[3]:] = np.array([self.wfg[2, gens[3]-1]] * (self.total_generations - gens[3]))
+    
+        # visualise weight probability distribution
+        self._vis_weights_fitness()
 
     def dynamic_fitness_gradual(self, population):
         # remove step sizes from individuals when using controller
@@ -114,7 +168,9 @@ class Generalist():
         es = values[:, 2]
         ts = values[:, 3]
 
-        fitness_custom = self.wfg[0, self.generation_number] * ps + self.wfg[1, self.generation_number] * es + self.wfg[2, self.generation_number] * ts
+        fitness_custom = self.wfg[0, self.generation_number] * ps # player health
+        + self.wfg[1, self.generation_number] * (100 - es) # enemy health, '100 - es' is same as in baseline fitness func
+        - self.wfg[2, self.generation_number] * np.log(ts) # log time is same as in baseline fitness func
 
         return fitness_original, fitness_custom
 
@@ -404,14 +460,6 @@ class Generalist():
         self.mutation_probability = args.mutation_probability
         self.testing = args.test
 
-        if args.fitness_function == "default":
-            self.fitness_func = self.fitness_eval
-        elif args.fitness_function == "dyna_rules":
-            self.fitness_func = self.dynamic_fitness_rules
-        elif args.fitness_function == "dyna_gradual":
-            self.fitness_func = self.dynamic_fitness_gradual
-            self._weights_fitness_gradual()
-
         # CMA-ES Parameters
         if self.mutation_type == 'correlated':
             self.c_sigma = args.c_sigma       # Learning rate for the step-size path
@@ -426,6 +474,7 @@ class Generalist():
             parser.error("--mutation_stepsize must be >= 1 for uncorrelated mutation")
 
         # file name generation
+        # folder_name = "experiments/"
         self.experiment_name = 'experiments/' + args.experiment_name
         self.experiment_name += f'_popusize={self.population_size}'
         self.experiment_name += f'_enemy={self.enemy_train}'
@@ -460,6 +509,14 @@ class Generalist():
             self.experiment_name += f'_init=kaiming'
         else:
             self.experiment_name += f'_init=random'
+        
+        if args.fitness_function == "default":
+            self.fitness_func = self.fitness_eval
+        elif args.fitness_function == "dyna_rules":
+            self.fitness_func = self.dynamic_fitness_rules
+        elif args.fitness_function == "dyna_gradual":
+            self.fitness_func = self.dynamic_fitness_gradual
+            self._weights_fitness_gradual()
 
         return
 
