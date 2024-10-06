@@ -99,21 +99,19 @@ class Generalist():
             mean_ee = np.mean(np.mean(np.array(self.e_sel_ee[-2:]), axis=1), axis=0)  # see if this overflows ram assuming (5, lenpop, enmies)
             mean_pe = np.mean(np.mean(np.array(self.e_sel_pe[-2:]), axis=1), axis=0)
             mean_t = np.mean(np.mean(np.array(self.e_sel_t[-2:]), axis=1), axis=0)
-            # these should be (enmies)
-
 
             gain = mean_pe - mean_ee
+            print(f"gain: {list(gain)}")
             self.worst_enemies = np.argsort(gain)[0:2]
             print(f"The new worst enemies are: {self.worst_enemies}")
             print("History:\n", self.worst_enemies_history)
 
-            self.worst_enemies_history.append(self.worst_enemies)
+            self.worst_enemies_history.append(list(self.worst_enemies))
 
 
         return self.worst_enemies # return worst two enemies. in range (0,7) NOT (1,8)
-    
 
-    
+
     def individual_simulation(self, neuron_values, enemies=False):
         
         fs, ps, es, ts = [], [], [], []
@@ -394,7 +392,7 @@ class Generalist():
         fitness_population, static_fitness = fitness_results[:, 0], fitness_results[:, -1]
         # Evolution loop
         for gen_idx in tqdm.tqdm(range(self.generation_number, self.total_generations)):
-            # self.generation_number = gen_idx
+            self.generation_number = gen_idx
             # create parents
             parents = dynamic_selection(population, fitness_population, self.generation_number+1)
 
