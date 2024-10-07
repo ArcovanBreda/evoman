@@ -507,9 +507,9 @@ class Generalist():
             with open(self.experiment_name + '/results.txt', 'r') as f:
                 for line in f:
                     l = line
-                generation_number = int(l.strip().split()[1][:-1]) + 1
+                self.generation_number = int(l.strip().split()[1][:-1]) + 1
 
-            if generation_number >= self.total_generations:
+            if self.generation_number >= self.total_generations:
                 print("\n\nAlready fully trained\n\n")
                 return
 
