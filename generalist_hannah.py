@@ -42,6 +42,8 @@ class Generalist():
 
         self.e_sel_ee, self.e_sel_pe, self.e_sel_t, self.worst_enemies_history = [], [], [], []
         self.worst_enemies = self.enemy_train[0:2]
+        self.fitness_history = {'defeated': [], 'ig': []}
+        self.fitness_weights = [20, 1, 0.1, 0.1]
         
         self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5 + self.mutation_stepsize
         if self.mutation_type == 'correlated':
@@ -101,8 +103,7 @@ class Generalist():
             mean_t = np.mean(np.mean(np.array(self.e_sel_t[-2:]), axis=1), axis=0)
 
             gain = mean_pe - mean_ee
-            print(f"gain: {list(gain)}")
-            self.worst_enemies = np.argsort(gain)[0:2]
+            self.worst_enemies = np.argsort(gain)[0:3]
             print(f"The new worst enemies are: {self.worst_enemies}")
             print("History:\n", self.worst_enemies_history)
 
@@ -112,7 +113,7 @@ class Generalist():
         return self.worst_enemies # return worst two enemies. in range (0,7) NOT (1,8)
 
 
-    def individual_simulation(self, neuron_values, enemies=False):
+    def individual_simulation(self, neuron_values):
         
         fs, ps, es, ts = [], [], [], []
 
@@ -125,18 +126,9 @@ class Generalist():
             
             fs.append(f), ps.append(p), es.append(e), ts.append(t)
 
-        # number of enemies that this player has defeated
-        if enemies:
-            enemies_defeated = len([elem for elem in es if elem <= 0])
-            return fs, ps, es, ts, enemies_defeated
-
         return fs, ps, es, ts
 
-    def get_stats(self, population, enemies = False):
-        if enemies:
-            fs, ps, es, ts, enemies_defeated_total = zip(*[self.individual_simulation(individual, enemies) for individual in population])
-            return np.array(fs), np.array(ps), np.array(es), np.array(ts), enemies_defeated_total
-        
+    def get_stats(self, population):
         fs, ps, es, ts = zip(*[self.individual_simulation(individual) for individual in population])
 
         return np.array(fs), np.array(ps), np.array(es), np.array(ts) 
@@ -151,44 +143,122 @@ class Generalist():
             _, params = population.shape
             population = population[:, :params - self.mutation_stepsize]
 
-        fs, ps, es, ts, enemies_defeated_total = self.get_stats(population, True)
-        # enemies_selected = [int(en)-1 for en in self.enemy_train.split(",")]
-        enemies_selected = self.enemy_selection(es, ps, ts)
+        fs, ps, es, ts = self.get_stats(population)
+        enemies_selected = np.array(self.enemy_train)-1
+        # enemies_selected = self.enemy_selection(es, ps, ts)
 
         static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7])
-        # fs = self.get_mean(fs, enemies_selected)
-        ps = self.get_mean(ps, enemies_selected)
-        es = self.get_mean(es, enemies_selected)
-        ts = self.get_mean(ts, enemies_selected)
+        defeated = es[:, np.array(self.enemy_train)-1]
+        enemies_defeated_total = [len([x for x in defeat if x <= 0]) for defeat in defeated]
+        ps = np.array(self.get_mean(ps, enemies_selected))
+        es = np.array(self.get_mean(es, enemies_selected))
+        ts = np.array(self.get_mean(ts, enemies_selected))
 
-        max_enemies_defeated = max(enemies_defeated_total)
-        if max_enemies_defeated > int(len(enemies_selected) / 2):
-            enemies_defeated = len([x for x in enemies_defeated_total if x > int(len(enemies_selected) / 2)])
-        elif max_enemies_defeated >= 2:
-            enemies_defeated = len([x for x in enemies_defeated_total if x >= 2])
-        else: 
-            enemies_defeated = enemies_defeated_total.count(max_enemies_defeated)
+        max_enemies_defeated = np.max(enemies_defeated_total)
+        enemies_defeated = enemies_defeated_total.count(max_enemies_defeated)
+        enemies_defeated_total = np.array(enemies_defeated_total)
+        # if max_enemies_defeated > int(len(self.enemy_train) / 2):
+        #     enemies_defeated = len([x for x in enemies_defeated_total if x > int(len(self.enemy_train) / 2)])
+        # elif max_enemies_defeated > 2:
+        #     enemies_defeated = len([x for x in enemies_defeated_total if x > 2])
+        # else: 
+        #     enemies_defeated = enemies_defeated_total.count(max_enemies_defeated)
         
         # set back to original
         print(max_enemies_defeated, enemies_defeated)
 
-        # static_fitness, _, _, _ = zip(*[self.simulation(individual) for individual in population])
-        # _, p_e, e_e, time = zip(*[self.simulation_local(individual) for individual in population])
+        # only switch every n iters to avoid fluctuating too much
+        iters = 5
 
-        # # number of defeated enemies in de fitness function opnemen
+        ig = ps - es
+       
+        if (self.generation_number+1) % iters == 0: # time to find new fitness function
+            if all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 4 for x in self.fitness_history['defeated']): # try to push more enemies
+                self.fitness_weights[0] = 25
+                self.fitness_weights[1] = 2
+                self.fitness_weights[2] = 2
+                self.fitness_weights[3] = 2
+                print('PUSH ENEMIES')
+            elif all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']):
+                self.fitness_weights[0] = 20
+                self.fitness_weights[1] = 1.5
+                self.fitness_weights[2] = 2
+                self.fitness_weights[3] = 2
+                print('LOW IG')
+            elif all(x >= -20 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']):
+                self.fitness_weights[0] = 15
+                self.fitness_weights[1] = 1.5
+                self.fitness_weights[2] = 2
+                self.fitness_weights[3] = 2
+                print('IG MET') # if baseline is met and ig is bigger than -20 (empirical tests), defeating and ig equally important, the rest becomes important
+            elif all(x >= 2 for x in self.fitness_history['defeated']):
+                self.fitness_weights[0] = 20
+                self.fitness_weights[1] = 2
+                self.fitness_weights[2] = 0.1
+                self.fitness_weights[3] = 0.1
+                print('BASELINE MET') # establish a baseline of defeating 2 enemies, and then prioritize ig
+            else:
+                self.fitness_weights[0] = 20
+                self.fitness_weights[1] = 1
+                self.fitness_weights[2] = 0.1
+                self.fitness_weights[3] = 0.1
+            self.fitness_history['defeated'] = []
+            self.fitness_history['ig'] = []
+        
+        fitness = self.fitness_weights[0] * enemies_defeated_total + self.fitness_weights[1]*ig + self.fitness_weights[2] * ps - self.fitness_weights[3] * np.log(np.minimum(ts, 3000))
 
-        if max_enemies_defeated == len(enemies_selected) and enemies_defeated >= int(0.25 * len(population)): # all enemies are defeated
+        self.fitness_history['defeated'].append(max_enemies_defeated)
+        self.fitness_history['ig'].append(np.max(ig))
+
+        print(self.fitness_history)
+        print(self.fitness_weights)
+        # enemies defeated and individual gain equally important after baseline has been established
+        # fitness = 15 * enemies_defeated_total + 1.5*(ps - es) + 0.1 * ps - 0.1 * np.log(np.mininum(ts, 3000))
+
+        # first set, need to establish baseline
+        # if baseline, equal importance enemies and IG
+        # if still baseline, and IG is at least
+
+
+
+        '''
+        if max_enemies_defeated == 0: # really bad focus on defeating enemies
+            fitness = 100 - np.array(es)
+            print('step terrible')
+        elif np.min(np.array(es)) > 50: # for the best individual the enemies get half health
+            fitness = 100 - np.array(es) + np.array(enemies_defeated_total)*10
+            print('Nobody defeated enemies on average')
+        elif np.min(np.array(es)) > 20:
+            fitness = (100 - np.array(es)) + np.array(enemies_defeated_total)*20
+            print('>20')
+        elif np.min(np.array(es)) > 0: # for no individual defeating enemies on average is close
+            fitness = 100 - np.array(es) + np.array(enemies_defeated_total)*5
+            print('Somebody is close to defeating enemies')
+        elif np.max(np.array(ps) - np.array(es)) >= 0: # best player does not lose on average
+            fitness = np.array(ps) + (100 - np.array(es)) + np.array(enemies_defeated_total)*10
+            print('step victory by best')
+        else:
+            fitness = np.array(ps) + 100 - np.array(es)
+            print('step else')
+        print("Individual Gain Max: ", np.max(np.array(ps) - np.array(es)))
+        print("Player Health Max: ", np.max(np.array(ps)))
+        print("Enemy Health Min: ", np.min(np.array(es)))
+        '''
+
+        '''
+        if max_enemies_defeated == len(self.enemy_train):# and enemies_defeated >= int(0.25 * len(population)): # all enemies are defeated
             fitness = 0.1 * (100 - es) + 0.9 * np.array(ps) - np.log(np.minimum(np.array(ts), 3000))
             print('step all defeated')
-        elif max_enemies_defeated > int(len(enemies_selected) / 2) and enemies_defeated >= int(0.25 * len(population)): # more than half of the enemies are defeated but not all
-            fitness = np.array(ps) - np.array(es) # individual gain #(enemies_defeated / len(self.env.enemies))**2 * (100 - np.array(e_e)) + (1 - (enemies_defeated / len(self.env.enemies))**2) * np.array(p_e)
+        elif max_enemies_defeated > int(len(self.enemy_train) / 2):# and enemies_defeated >= int(0.25 * len(population)): # more than half of the enemies are defeated but not all
+            fitness = 0.9 * np.array(ps) - 0.1 * (100 - np.array(es)) # individual gain #(enemies_defeated / len(self.env.enemies))**2 * (100 - np.array(e_e)) + (1 - (enemies_defeated / len(self.env.enemies))**2) * np.array(p_e)
             print('step more than half')
-        elif max_enemies_defeated >= 2 and enemies_defeated >= int(0.25 * len(population)): # mostly focus on defeating enemies
-            fitness = 0.8 * (100 - np.array(es)) + 0.2 * np.array(ps) + 0.8 * np.array(enemies_defeated_total) * 10
+        elif max_enemies_defeated > 2:# and enemies_defeated >= int(0.25 * len(population)): # mostly focus on defeating enemies, moeite hier dus meer focussen op player
+            fitness = np.array(ps) - np.array(es) #+ np.array(enemies_defeated_total)#0.8 * (100 - np.array(es)) + 0.2 * np.array(ps) + 0.8 * np.array(enemies_defeated_total) * 10
             print('step more than 2 less than half')
         else: # fully focus on defeating enemies if population that defeats is too small
             fitness = (100 - np.array(es)) + np.array(enemies_defeated_total) * 10
             print('step less than or equal to 2')
+        '''
 
 
         # _, p_e, e_e, time = zip(*[self.simulation_local(individual) for individual in population])
