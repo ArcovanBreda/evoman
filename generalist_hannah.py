@@ -40,8 +40,6 @@ class Generalist():
                 visuals=False,
                 multiplemode="yes", randomini="no")
 
-        self.e_sel_ee, self.e_sel_pe, self.e_sel_t, self.worst_enemies_history = [], [], [], []
-        self.worst_enemies = self.enemy_train[0:2]
         self.fitness_history = {'defeated': [], 'ig': []}
         self.fitness_weights = [20, 1, 0.1, 0.1]
         
@@ -80,39 +78,6 @@ class Generalist():
 
         return np.array([self.simulation(individual) for individual in population])
 
-    def enemy_selection(self, ee, pe, t):
-        """init:
-                self.e_sel_ee, self.e_sel_pe, self.e_sel_t, self.worst_enemies_history = [], [], [], []
-                self.worst_enemies = self.enemy_train[0:2]
-                ee = [lenpop, 8] enemy energy Numpy array
-                pe = [lenpop, 8] player energy Numpy array
-                t = [lenpop, 8] time Numpy array
-            returns
-                list with indexes of enmies
-        """
-        # select only ones were training on
-        ee, pe, t, = ee[:, np.array(self.enemy_train)-1], pe[:, np.array(self.enemy_train)-1], t[:, np.array(self.enemy_train)-1]
-        self.e_sel_ee.append(ee)
-        self.e_sel_pe.append(pe)
-        self.e_sel_t.append(t)
-
-        # select new enemies to foccus on if gen % 5 = 0
-        if self.generation_number % 2 == 0 and len(self.e_sel_ee) >= 2:
-            mean_ee = np.mean(np.mean(np.array(self.e_sel_ee[-2:]), axis=1), axis=0)  # see if this overflows ram assuming (5, lenpop, enmies)
-            mean_pe = np.mean(np.mean(np.array(self.e_sel_pe[-2:]), axis=1), axis=0)
-            mean_t = np.mean(np.mean(np.array(self.e_sel_t[-2:]), axis=1), axis=0)
-
-            gain = mean_pe - mean_ee
-            self.worst_enemies = np.argsort(gain)[0:3]
-            print(f"The new worst enemies are: {self.worst_enemies}")
-            print("History:\n", self.worst_enemies_history)
-
-            self.worst_enemies_history.append(list(self.worst_enemies))
-
-
-        return self.worst_enemies # return worst two enemies. in range (0,7) NOT (1,8)
-
-
     def individual_simulation(self, neuron_values):
         
         fs, ps, es, ts = [], [], [], []
@@ -145,7 +110,6 @@ class Generalist():
 
         fs, ps, es, ts = self.get_stats(population)
         enemies_selected = np.array(self.enemy_train)-1
-        # enemies_selected = self.enemy_selection(es, ps, ts)
 
         static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7])
         defeated = es[:, np.array(self.enemy_train)-1]
