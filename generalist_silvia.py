@@ -41,8 +41,8 @@ class Generalist():
                 visuals=False,
                 multiplemode="yes", randomini="no")
 
-        self.e_sel_ee, self.e_sel_pe, self.e_sel_t, self.worst_enemies_history = [], [], [], []
-        self.worst_enemies = self.enemy_train[0:2]
+        # self.e_sel_ee, self.e_sel_pe, self.e_sel_t, self.worst_enemies_history = [], [], [], []
+        # self.worst_enemies = self.enemy_train[0:2]
 
         self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5 + self.mutation_stepsize
         if self.mutation_type == 'correlated':
@@ -110,37 +110,37 @@ class Generalist():
             population = population[:, :params - self.mutation_stepsize]
         return np.array([self.simulation(individual) for individual in population])[:, 0], None
 
-    def enemy_selection(self, ee, pe, t):
-        """init:
-                self.e_sel_ee, self.e_sel_pe, self.e_sel_t, self.worst_enemies_history = [], [], [], []
-                self.worst_enemies = self.enemy_train[0:2]
-                ee = [lenpop, 8] enemy energy Numpy array
-                pe = [lenpop, 8] player energy Numpy array
-                t = [lenpop, 8] time Numpy array
-            returns
-                list with indexes of enmies
-        """
-        # select only ones were training on
-        ee, pe, t, = ee[:, self.enemy_train], pe[:, self.enemy_train], t[:, self.enemy_train]
-        self.e_sel_ee.append(ee)
-        self.e_sel_pe.append(pe)
-        self.e_sel_t.append(t)
+    # def enemy_selection(self, ee, pe, t):
+    #     """init:
+    #             self.e_sel_ee, self.e_sel_pe, self.e_sel_t, self.worst_enemies_history = [], [], [], []
+    #             self.worst_enemies = self.enemy_train[0:2]
+    #             ee = [lenpop, 8] enemy energy Numpy array
+    #             pe = [lenpop, 8] player energy Numpy array
+    #             t = [lenpop, 8] time Numpy array
+    #         returns
+    #             list with indexes of enmies
+    #     """
+    #     # select only ones were training on
+    #     ee, pe, t, = ee[:, self.enemy_train], pe[:, self.enemy_train], t[:, self.enemy_train]
+    #     self.e_sel_ee.append(ee)
+    #     self.e_sel_pe.append(pe)
+    #     self.e_sel_t.append(t)
 
-        # select new enemies to focus on if gen % 5 = 0
-        if self.generation_number % 5 == 0 and len(self.e_sel_ee) >= 5:
-            mean_ee = np.mean(np.mean(np.array(self.e_sel_ee[-5:]), axis=1), axis=0)  # see if this overflows ram assuming (5, lenpop, enmies)
-            mean_pe = np.mean(np.mean(np.array(self.e_sel_pe[-5:]), axis=1), axis=0)
-            mean_t = np.mean(np.mean(np.array(self.e_sel_t[-5:]), axis=1), axis=0)
+    #     # select new enemies to focus on if gen % 5 = 0
+    #     if self.generation_number % 5 == 0 and len(self.e_sel_ee) >= 5:
+    #         mean_ee = np.mean(np.mean(np.array(self.e_sel_ee[-5:]), axis=1), axis=0)  # see if this overflows ram assuming (5, lenpop, enmies)
+    #         mean_pe = np.mean(np.mean(np.array(self.e_sel_pe[-5:]), axis=1), axis=0)
+    #         mean_t = np.mean(np.mean(np.array(self.e_sel_t[-5:]), axis=1), axis=0)
 
-            gain = mean_pe - mean_ee
-            print(f"gain: {list(gain)}")
-            self.worst_enemies = reversed(np.argsort(gain))[0:2]
-            print(f"The new worst enemies are: {self.worst_enemies}")
-            print("History:\n", self.worst_enemies_history)
+    #         gain = mean_pe - mean_ee
+    #         print(f"gain: {list(gain)}")
+    #         self.worst_enemies = reversed(np.argsort(gain))[0:2]
+    #         print(f"The new worst enemies are: {self.worst_enemies}")
+    #         print("History:\n", self.worst_enemies_history)
 
-            self.worst_enemies_history.append(self.worst_enemies)
+    #         self.worst_enemies_history.append(self.worst_enemies)
 
-        return self.worst_enemies # return worst two enemies. in range (0,7) NOT (1,8)
+    #     return self.worst_enemies # return worst two enemies. in range (0,7) NOT (1,8)
   
     def fitness_eval_stepwise(self, population):
         # remove step sizes from individuals when using controller
@@ -286,9 +286,12 @@ class Generalist():
             population = population[:, :params - self.mutation_stepsize]
 
         fs, ps, es, ts, _ = self.get_stats(population, True)
-        enemies_selected = self.enemy_selection(es, ps, ts)
+        enemies_selected = np.array(self.enemy_train) - 1
+        # enemies_selected = self.enemy_selection(es, ps, ts)
 
+        # static_fitness = self.get_mean(fs, enemies_selected)
         static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7])
+
         ps = self.get_mean(ps, enemies_selected)
         es = self.get_mean(es, enemies_selected)
         ts = self.get_mean(ts, enemies_selected)
@@ -404,38 +407,38 @@ class Generalist():
 
         return pop, fit_pop, stat_pop
 
-    def enemy_selection(self, ee, pe, t):
-        """init:
-                self.e_sel_ee, self.e_sel_pe, self.e_sel_t, self.worst_enemies_history = [], [], [], []
-                self.worst_enemies = self.enemy_train[0:2]
-                ee = [lenpop, 8] enemy energy Numpy array
-                pe = [lenpop, 8] player energy Numpy array
-                t = [lenpop, 8] time Numpy array
-            returns
-                list with indexes of enmies
-        """
-        # select only ones were training on
-        ee, pe, t, = ee[:, np.array(self.enemy_train)-1], pe[:, np.array(self.enemy_train)-1], t[:, np.array(self.enemy_train)-1]
-        self.e_sel_ee.append(ee)
-        self.e_sel_pe.append(pe)
-        self.e_sel_t.append(t)
+    # def enemy_selection(self, ee, pe, t):
+    #     """init:
+    #             self.e_sel_ee, self.e_sel_pe, self.e_sel_t, self.worst_enemies_history = [], [], [], []
+    #             self.worst_enemies = self.enemy_train[0:2]
+    #             ee = [lenpop, 8] enemy energy Numpy array
+    #             pe = [lenpop, 8] player energy Numpy array
+    #             t = [lenpop, 8] time Numpy array
+    #         returns
+    #             list with indexes of enmies
+    #     """
+    #     # select only ones were training on
+    #     ee, pe, t, = ee[:, np.array(self.enemy_train)-1], pe[:, np.array(self.enemy_train)-1], t[:, np.array(self.enemy_train)-1]
+    #     self.e_sel_ee.append(ee)
+    #     self.e_sel_pe.append(pe)
+    #     self.e_sel_t.append(t)
 
-        # select new enemies to foccus on if gen % 5 = 0
-        if self.generation_number % 2 == 0 and len(self.e_sel_ee) >= 2:
-            mean_ee = np.mean(np.mean(np.array(self.e_sel_ee[-2:]), axis=1), axis=0)  # see if this overflows ram assuming (5, lenpop, enmies)
-            mean_pe = np.mean(np.mean(np.array(self.e_sel_pe[-2:]), axis=1), axis=0)
-            mean_t = np.mean(np.mean(np.array(self.e_sel_t[-2:]), axis=1), axis=0)
+    #     # select new enemies to foccus on if gen % 5 = 0
+    #     if self.generation_number % 2 == 0 and len(self.e_sel_ee) >= 2:
+    #         mean_ee = np.mean(np.mean(np.array(self.e_sel_ee[-2:]), axis=1), axis=0)  # see if this overflows ram assuming (5, lenpop, enmies)
+    #         mean_pe = np.mean(np.mean(np.array(self.e_sel_pe[-2:]), axis=1), axis=0)
+    #         mean_t = np.mean(np.mean(np.array(self.e_sel_t[-2:]), axis=1), axis=0)
 
-            gain = mean_pe - mean_ee
-            print(f"gain: {list(gain)}")
-            self.worst_enemies = np.argsort(gain)[0:2]
-            print(f"The new worst enemies are: {self.worst_enemies}")
-            print("History:\n", self.worst_enemies_history)
+    #         gain = mean_pe - mean_ee
+    #         print(f"gain: {list(gain)}")
+    #         self.worst_enemies = np.argsort(gain)[0:2]
+    #         print(f"The new worst enemies are: {self.worst_enemies}")
+    #         print("History:\n", self.worst_enemies_history)
 
-            self.worst_enemies_history.append(list(self.worst_enemies))
+    #         self.worst_enemies_history.append(list(self.worst_enemies))
 
 
-        return self.worst_enemies # return worst two enemies. in range (0,7) NOT (1,8)
+    #     return self.worst_enemies # return worst two enemies. in range (0,7) NOT (1,8)
 
     def individual_simulation(self, neuron_values, enemies=False):
         fs, ps, es, ts = [], [], [], []
@@ -555,7 +558,11 @@ class Generalist():
                     print(f"Generation {gen_idx}: {static_fitness[best]:.5f} {mean:.5f} {std:.5f}" )
                     f.write(f"Generation {gen_idx}: {static_fitness[best]:.5f} {mean:.5f} {std:.5f}\n")
 
-                np.savetxt(self.experiment_name + '/best.txt', population[best])
+                if self.mutation_type == "uncorrelated" and self.handin:
+                    _, params = population.shape
+                    np.savetxt(self.experiment_name + '/best.txt', population[best, :params - self.mutation_stepsize])
+                else:
+                    np.savetxt(self.experiment_name + '/best.txt', population[best])
 
                 if self.mutation_type == 'correlated':
                     np.savez(self.experiment_name + '/CMA_params.npz',
@@ -619,6 +626,7 @@ class Generalist():
         parser.add_argument('-lc', '--log_custom', action="store_true", help="Log info custom fitness function as well")
         parser.add_argument('-g', '--gens', type=str, default='20,40,60,80', help='4 generation numbers to adjust fitness function weights over')
         parser.add_argument('-fe', '--fitness_epsilon', type=float, default=0.2, help="Lowest probability for term in fitness function is fitness_epsilon / 2 ")
+        parser.add_argument('-hi', '--handin', action="store_true", help="Slice sigma values of genes when storing best solution")
 
         args = parser.parse_args()
         self.population_size = args.population_size
@@ -639,6 +647,7 @@ class Generalist():
         self.mutation_probability = args.mutation_probability
         self.testing = args.test
         self.log_custom = True if args.log_custom else False
+        self.handin = True if args.handin else False
 
         # CMA-ES Parameters
         if self.mutation_type == 'correlated':
@@ -664,7 +673,7 @@ class Generalist():
         self.experiment_name += f'_l={self.lowerbound}'
         self.experiment_name += f'_mutationtype={self.mutation_type}'
         self.experiment_name += f'_mutationprobability={self.mutation_probability}'
-        self.experiment_name += f'_fitness_func={args.fitness_function}' #TODO idk if this messes up plot code
+        self.experiment_name += f'_fitnessfunc={args.fitness_function}' #TODO idk if this messes up plot code
 
         if self.mutation_type == 'uncorrelated':
             self.experiment_name += f'_mutationstepsize={self.mutation_stepsize}'
@@ -701,6 +710,7 @@ class Generalist():
 
     def test(self, type="individual gain"):
         self.env.enemies = [self.enemy_test]
+
         if self.visualise_best:
             self.env.visuals = True 
             self.env.speed = "normal" 
@@ -713,6 +723,10 @@ class Generalist():
             raise FileNotFoundError(f"\n\nBest individual not found at {best_individual_path}, please set flag -t to train")
 
         best_individual = np.loadtxt(best_individual_path)
+        if self.mutation_type == "uncorrelated":
+            shape = best_individual.shape
+            if shape[0] > 265:
+                best_individual = best_individual[:shape[0] - self.mutation_stepsize]
 
         # Simulate the environment with the best individual
         scores = []
