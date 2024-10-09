@@ -266,10 +266,8 @@ class Generalist():
 
         return total_offspring
 
-
     def selection(self, new_population, static_fitness, ed, dynamic_fitness):
         # Fitness stability
-        print(len(ed))
         fitness = np.clip(dynamic_fitness, 1e-10, None)
         probs = fitness / np.sum(fitness)
 
@@ -281,7 +279,7 @@ class Generalist():
         fitness_sorted_top = top_percent_indices[np.argsort(-fitness[top_percent_indices])]  # Negative for descending
         sorted_indices[:top_percent_count] = fitness_sorted_top
         # print("new pop defeated enemies", ed[sorted_indices][0:5], "dynamic fitness", dynamic_fitness[sorted_indices][0:5])
-        # exit()
+
         # Random selection for the rest of the population (excluding top 5%)
         remaining_indices = np.random.choice(new_population.shape[0], 
                                             self.population_size - top_percent_count, 
