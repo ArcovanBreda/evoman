@@ -111,6 +111,7 @@ class Generalist():
         fs, ps, es, ts = self.get_stats(population)
         enemies_selected = np.array(self.enemy_train)-1
 
+        # get all information 
         static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7])
         defeated = es[:, np.array(self.enemy_train)-1]
         enemies_defeated_total = [len([x for x in defeat if x <= 0]) for defeat in defeated]
@@ -121,14 +122,8 @@ class Generalist():
         max_enemies_defeated = np.max(enemies_defeated_total)
         enemies_defeated = enemies_defeated_total.count(max_enemies_defeated)
         enemies_defeated_total = np.array(enemies_defeated_total)
-        # if max_enemies_defeated > int(len(self.enemy_train) / 2):
-        #     enemies_defeated = len([x for x in enemies_defeated_total if x > int(len(self.enemy_train) / 2)])
-        # elif max_enemies_defeated > 2:
-        #     enemies_defeated = len([x for x in enemies_defeated_total if x > 2])
-        # else: 
-        #     enemies_defeated = enemies_defeated_total.count(max_enemies_defeated)
         
-        # set back to original
+        # print number of defeated enemies
         print(max_enemies_defeated, enemies_defeated)
 
         # only switch every n iters to avoid fluctuating too much
@@ -137,116 +132,45 @@ class Generalist():
         ig = ps - es
        
         if (self.generation_number+1) % iters == 0: # time to find new fitness function
-            if all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 4 for x in self.fitness_history['defeated']): # try to push more enemies
-                self.fitness_weights[0] = 25
-                self.fitness_weights[1] = 2
-                self.fitness_weights[2] = 2
-                self.fitness_weights[3] = 2
+            if all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 4 for x in self.fitness_history['defeated']): # focus on ig
+                self.fitness_weights[0] = 2.5
+                self.fitness_weights[1] = 3
+                self.fitness_weights[2] = 1
+                self.fitness_weights[3] = 1
                 print('PUSH ENEMIES')
-            elif all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']):
-                self.fitness_weights[0] = 20
-                self.fitness_weights[1] = 1.5
-                self.fitness_weights[2] = 2
-                self.fitness_weights[3] = 2
+            elif all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']): # focus on ed
+                self.fitness_weights[0] = 3
+                self.fitness_weights[1] = 2.5
+                self.fitness_weights[2] = 1
+                self.fitness_weights[3] = 1
                 print('LOW IG')
-            elif all(x >= -20 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']):
-                self.fitness_weights[0] = 15
-                self.fitness_weights[1] = 1.5
-                self.fitness_weights[2] = 2
-                self.fitness_weights[3] = 2
+            elif all(x >= -20 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']): # focus equally + extras
+                self.fitness_weights[0] = 2
+                self.fitness_weights[1] = 2
+                self.fitness_weights[2] = 1
+                self.fitness_weights[3] = 1
                 print('IG MET') # if baseline is met and ig is bigger than -20 (empirical tests), defeating and ig equally important, the rest becomes important
-            elif all(x >= 2 for x in self.fitness_history['defeated']):
-                self.fitness_weights[0] = 20
+            elif all(x >= 2 for x in self.fitness_history['defeated']): # focus on ig
+                self.fitness_weights[0] = 1
                 self.fitness_weights[1] = 2
                 self.fitness_weights[2] = 0.1
                 self.fitness_weights[3] = 0.1
                 print('BASELINE MET') # establish a baseline of defeating 2 enemies, and then prioritize ig
-            else:
-                self.fitness_weights[0] = 20
+            else: # focus on ed
+                self.fitness_weights[0] = 2
                 self.fitness_weights[1] = 1
                 self.fitness_weights[2] = 0.1
                 self.fitness_weights[3] = 0.1
             self.fitness_history['defeated'] = []
             self.fitness_history['ig'] = []
         
-        fitness = self.fitness_weights[0] * enemies_defeated_total + self.fitness_weights[1]*ig + self.fitness_weights[2] * ps - self.fitness_weights[3] * np.log(np.minimum(ts, 3000))
+        fitness = self.fitness_weights[0] * (100/len(self.enemy_train)) * enemies_defeated_total + self.fitness_weights[1]*ig + self.fitness_weights[2] * ps - self.fitness_weights[3] * np.log(np.minimum(ts, 3000))
 
         self.fitness_history['defeated'].append(max_enemies_defeated)
         self.fitness_history['ig'].append(np.max(ig))
 
         print(self.fitness_history)
         print(self.fitness_weights)
-        # enemies defeated and individual gain equally important after baseline has been established
-        # fitness = 15 * enemies_defeated_total + 1.5*(ps - es) + 0.1 * ps - 0.1 * np.log(np.mininum(ts, 3000))
-
-        # first set, need to establish baseline
-        # if baseline, equal importance enemies and IG
-        # if still baseline, and IG is at least
-
-
-
-        '''
-        if max_enemies_defeated == 0: # really bad focus on defeating enemies
-            fitness = 100 - np.array(es)
-            print('step terrible')
-        elif np.min(np.array(es)) > 50: # for the best individual the enemies get half health
-            fitness = 100 - np.array(es) + np.array(enemies_defeated_total)*10
-            print('Nobody defeated enemies on average')
-        elif np.min(np.array(es)) > 20:
-            fitness = (100 - np.array(es)) + np.array(enemies_defeated_total)*20
-            print('>20')
-        elif np.min(np.array(es)) > 0: # for no individual defeating enemies on average is close
-            fitness = 100 - np.array(es) + np.array(enemies_defeated_total)*5
-            print('Somebody is close to defeating enemies')
-        elif np.max(np.array(ps) - np.array(es)) >= 0: # best player does not lose on average
-            fitness = np.array(ps) + (100 - np.array(es)) + np.array(enemies_defeated_total)*10
-            print('step victory by best')
-        else:
-            fitness = np.array(ps) + 100 - np.array(es)
-            print('step else')
-        print("Individual Gain Max: ", np.max(np.array(ps) - np.array(es)))
-        print("Player Health Max: ", np.max(np.array(ps)))
-        print("Enemy Health Min: ", np.min(np.array(es)))
-        '''
-
-        '''
-        if max_enemies_defeated == len(self.enemy_train):# and enemies_defeated >= int(0.25 * len(population)): # all enemies are defeated
-            fitness = 0.1 * (100 - es) + 0.9 * np.array(ps) - np.log(np.minimum(np.array(ts), 3000))
-            print('step all defeated')
-        elif max_enemies_defeated > int(len(self.enemy_train) / 2):# and enemies_defeated >= int(0.25 * len(population)): # more than half of the enemies are defeated but not all
-            fitness = 0.9 * np.array(ps) - 0.1 * (100 - np.array(es)) # individual gain #(enemies_defeated / len(self.env.enemies))**2 * (100 - np.array(e_e)) + (1 - (enemies_defeated / len(self.env.enemies))**2) * np.array(p_e)
-            print('step more than half')
-        elif max_enemies_defeated > 2:# and enemies_defeated >= int(0.25 * len(population)): # mostly focus on defeating enemies, moeite hier dus meer focussen op player
-            fitness = np.array(ps) - np.array(es) #+ np.array(enemies_defeated_total)#0.8 * (100 - np.array(es)) + 0.2 * np.array(ps) + 0.8 * np.array(enemies_defeated_total) * 10
-            print('step more than 2 less than half')
-        else: # fully focus on defeating enemies if population that defeats is too small
-            fitness = (100 - np.array(es)) + np.array(enemies_defeated_total) * 10
-            print('step less than or equal to 2')
-        '''
-
-
-        # _, p_e, e_e, time = zip(*[self.simulation_local(individual) for individual in population])
-
-        # # number of defeated enemies in de fitness function opnemen
-        # fitness = np.zeros_like(static_fitness)
-        # for i in range(len(population)):
-
-        #     if enemies_defeated_total[i] == len(self.env.enemies): # all enemies are defeated
-        #         fitness[i] = 0.1 * (100 - e_e[i]) + 0.9 * p_e[i] - np.log(np.minimum(time[i], 3000))
-        #         # print('step all defeated')
-        #     elif enemies_defeated_total[i] > int(len(self.env.enemies) / 2): # more than half of the enemies are defeated but not all
-        #         fitness[i] = p_e[i] - e_e[i] # individual gain #(enemies_defeated / len(self.env.enemies))**2 * (100 - np.array(e_e)) + (1 - (enemies_defeated / len(self.env.enemies))**2) * np.array(p_e)
-        #         # print('step more than half')
-        #     elif enemies_defeated_total[i] >= 2: # mostly focus on defeating enemies
-        #         fitness[i] = 0.8 * (100 - e_e[i]) + 0.2 * p_e[i] + 0.8 * enemies_defeated_total[i] * 10
-        #         # print('step more than 2 less than half')
-        #     else: # fully focus on defeating enemies if population that defeats is too small
-        #         fitness[i] = (100 - e_e[i]) + enemies_defeated_total[i] * 10
-        #         # print('step less than or equal to 2')
-
-        # static_fitness = 0.9 * (100 - e_e) + 0.1 * p_e - log(time)
-
-        # fitness = static_fitness
 
         return np.array([list(item) for item in zip(fitness, ps, es, ts, static_fitness)])
 
@@ -449,17 +373,47 @@ class Generalist():
             mean = np.mean(static_fitness)
             std  = np.std(static_fitness)
 
+            # if not self.intermediate_save:
+            #     with open(self.experiment_name + '/results.txt', 'a') as f:
+            #         # save as best, mean, std
+            #         print(f"Generation {gen_idx}: {static_fitness[best]:.5f} {mean:.5f} {std:.5f}" )
+            #         f.write(f"Generation {gen_idx}: {static_fitness[best]:.5f} {mean:.5f} {std:.5f}\n")
+
+            #     np.savetxt(self.experiment_name + '/best.txt', population[best])
+
+            #     if self.mutation_type == 'correlated':
+            #         np.savez(self.experiment_name + '/CMA_params.npz',
+            #                 p_sigma=self.p_sigma, p_c=self.p_c, C=self.C, m=self.m)
             if not self.intermediate_save:
                 with open(self.experiment_name + '/results.txt', 'a') as f:
                     # save as best, mean, std
                     print(f"Generation {gen_idx}: {static_fitness[best]:.5f} {mean:.5f} {std:.5f}" )
                     f.write(f"Generation {gen_idx}: {static_fitness[best]:.5f} {mean:.5f} {std:.5f}\n")
 
-                np.savetxt(self.experiment_name + '/best.txt', population[best])
+                if self.mutation_type == "uncorrelated" and self.handin:
+                    _, params = population.shape
+                    np.savetxt(self.experiment_name + '/best.txt', population[best, :params - self.mutation_stepsize])
+                else:
+                    np.savetxt(self.experiment_name + '/best.txt', population[best])
 
                 if self.mutation_type == 'correlated':
                     np.savez(self.experiment_name + '/CMA_params.npz',
                             p_sigma=self.p_sigma, p_c=self.p_c, C=self.C, m=self.m)
+                
+                if self.log_custom:
+                    # take best fitness from custom fitness population (does not need to be the best from baseline fitness population)
+                    best = np.argmax(fitness_population)
+                    mean = np.mean(fitness_population)
+                    std  = np.std(fitness_population)
+
+                    with open(self.experiment_name + '/custom_fitness_results.txt', 'a') as f:
+                        # print(f"Best Baseline Fitness wrt Custom Fitness Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}" )
+                        # f.write(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}\n")
+
+                        print(f"(Custom fitness) Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}" )
+                        f.write(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}\n")
+
+                    np.savetxt(self.experiment_name + '/custom_fitness_best.txt', population[best])
 
             solutions = [population, static_fitness]
             self.env.update_solutions(solutions)
@@ -500,6 +454,8 @@ class Generalist():
         parser.add_argument('-v', '--visualise_best', action="store_true", help="Shows the character when testing")
         parser.add_argument('-mp', '--mutation_probability', type=float, default=0.5, help="probability an individual gets mutated")
         parser.add_argument('-te', '--test', action="store_true", help="Tests the selected bot / enemies")
+        parser.add_argument('-lc', '--log_custom', action="store_true", help="Log info custom fitness function as well")
+        parser.add_argument('-hi', '--handin', action="store_true", help="Slice sigma values of genes when storing best solution")
 
         args = parser.parse_args()
         self.population_size = args.population_size
@@ -519,6 +475,8 @@ class Generalist():
         self.visualise_best = args.visualise_best
         self.mutation_probability = args.mutation_probability
         self.testing = args.test
+        self.log_custom = True if args.log_custom else False
+        self.handin = True if args.handin else False
 
         # CMA-ES Parameters
         if self.mutation_type == 'correlated':
@@ -585,6 +543,10 @@ class Generalist():
             raise FileNotFoundError(f"\n\nBest individual not found at {best_individual_path}, please set flag -t to train")
 
         best_individual = np.loadtxt(best_individual_path)
+        if self.mutation_type == "uncorrelated":
+            shape = best_individual.shape
+            if shape[0] > 265:
+                best_individual = best_individual[:shape[0] - self.mutation_stepsize]
 
         # Simulate the environment with the best individual
         scores = []
