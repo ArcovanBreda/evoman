@@ -11,8 +11,6 @@ import tqdm
 class Generalist():
     def __init__(self) -> None:
         self.parse_args()
-
-        # if not os.path.exists(self.experiment_name):
         os.makedirs(self.experiment_name, exist_ok=True)
 
         self.controller = player_controller(self.n_hidden_neurons)
@@ -26,8 +24,7 @@ class Generalist():
                 level=2,
                 speed="fastest",
                 visuals=False,
-                multiplemode="yes", 
-                randomini="yes", 
+                multiplemode="yes"
                 # logs="yes"
                 )
                 
@@ -41,8 +38,8 @@ class Generalist():
                 visuals=False,
                 multiplemode="yes", randomini="no")
 
-        # self.e_sel_ee, self.e_sel_pe, self.e_sel_t, self.worst_enemies_history = [], [], [], []
-        # self.worst_enemies = self.enemy_train[0:2]
+        self.fitness_history = {'defeated': [], 'ig': []}
+        self.fitness_weights = [20, 1, 0.1, 0.1]
 
         self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5 + self.mutation_stepsize
         if self.mutation_type == 'correlated':
@@ -66,23 +63,17 @@ class Generalist():
         f, p, e, t = self.global_env.play(pcont=neuron_values)
         return f, p, e, t
     
-    def individual_simulation(self, neuron_values, enemies=False):
-        
+    def individual_simulation(self, neuron_values):
         fs, ps, es, ts = [], [], [], []
 
         # compute for all enemies
         for enemy in range(1, 9):
-            
+
             self.env.enemies = [enemy]
             self.env.multiplemode = "no"
             f, p, e, t = self.env.play(pcont=neuron_values)
-            
-            fs.append(f), ps.append(p), es.append(e), ts.append(t)
 
-        # number of enemies that this player has defeated
-        if enemies:
-            enemies_defeated = len([elem for elem in es if elem <= 0])
-            return fs, ps, es, ts, enemies_defeated
+            fs.append(f), ps.append(p), es.append(e), ts.append(t)
 
         return fs, ps, es, ts
 
@@ -90,145 +81,37 @@ class Generalist():
         f, p, e, t = self.env.play(pcont=neuron_values)
         return p - e
 
-    def get_stats(self, population, enemies = False):
-        if enemies:
-            fs, ps, es, ts, enemies_defeated_total = zip(*[self.individual_simulation(individual, enemies) for individual in population])
-            return np.array(fs), np.array(ps), np.array(es), np.array(ts), enemies_defeated_total
-        
+    def get_stats(self, population):
         fs, ps, es, ts = zip(*[self.individual_simulation(individual) for individual in population])
 
-        return np.array(fs), np.array(ps), np.array(es), np.array(ts) 
+        return np.array(fs), np.array(ps), np.array(es), np.array(ts)
 
     def get_mean(self, stats, indices):
         selected_elements = [[stat[i] for i in indices] for stat in stats]
         return np.mean(selected_elements, axis=1)
 
-    def fitness_eval(self, population):
-        # remove step sizes from individuals when using controller
-        if self.mutation_type == "uncorrelated":
-            _, params = population.shape
-            population = population[:, :params - self.mutation_stepsize]
-        return np.array([self.simulation(individual) for individual in population])[:, 0], None
-
-    # def enemy_selection(self, ee, pe, t):
-    #     """init:
-    #             self.e_sel_ee, self.e_sel_pe, self.e_sel_t, self.worst_enemies_history = [], [], [], []
-    #             self.worst_enemies = self.enemy_train[0:2]
-    #             ee = [lenpop, 8] enemy energy Numpy array
-    #             pe = [lenpop, 8] player energy Numpy array
-    #             t = [lenpop, 8] time Numpy array
-    #         returns
-    #             list with indexes of enmies
-    #     """
-    #     # select only ones were training on
-    #     ee, pe, t, = ee[:, self.enemy_train], pe[:, self.enemy_train], t[:, self.enemy_train]
-    #     self.e_sel_ee.append(ee)
-    #     self.e_sel_pe.append(pe)
-    #     self.e_sel_t.append(t)
-
-    #     # select new enemies to focus on if gen % 5 = 0
-    #     if self.generation_number % 5 == 0 and len(self.e_sel_ee) >= 5:
-    #         mean_ee = np.mean(np.mean(np.array(self.e_sel_ee[-5:]), axis=1), axis=0)  # see if this overflows ram assuming (5, lenpop, enmies)
-    #         mean_pe = np.mean(np.mean(np.array(self.e_sel_pe[-5:]), axis=1), axis=0)
-    #         mean_t = np.mean(np.mean(np.array(self.e_sel_t[-5:]), axis=1), axis=0)
-
-    #         gain = mean_pe - mean_ee
-    #         print(f"gain: {list(gain)}")
-    #         self.worst_enemies = reversed(np.argsort(gain))[0:2]
-    #         print(f"The new worst enemies are: {self.worst_enemies}")
-    #         print("History:\n", self.worst_enemies_history)
-
-    #         self.worst_enemies_history.append(self.worst_enemies)
-
-    #     return self.worst_enemies # return worst two enemies. in range (0,7) NOT (1,8)
-  
-    def fitness_eval_stepwise(self, population):
-        # remove step sizes from individuals when using controller
-        if self.mutation_type == "uncorrelated":
-            _, params = population.shape
-            population = population[:, :params - self.mutation_stepsize]
-
-        fs, ps, es, ts, enemies_defeated_total = self.get_stats(population, True)
-        # enemies_selected = [int(en)-1 for en in self.enemy_train.split(",")]
-        enemies_selected = self.enemy_selection(es, ps, ts)
-
-        static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7])
-        # fs = self.get_mean(fs, enemies_selected)
-        ps = self.get_mean(ps, enemies_selected)
-        es = self.get_mean(es, enemies_selected)
-        ts = self.get_mean(ts, enemies_selected)
-
-        max_enemies_defeated = max(enemies_defeated_total)
-        if max_enemies_defeated > int(len(enemies_selected) / 2):
-            enemies_defeated = len([x for x in enemies_defeated_total if x > int(len(enemies_selected) / 2)])
-        elif max_enemies_defeated >= 2:
-            enemies_defeated = len([x for x in enemies_defeated_total if x >= 2])
-        else: 
-            enemies_defeated = enemies_defeated_total.count(max_enemies_defeated)
-        
-        # set back to original
-        print(max_enemies_defeated, enemies_defeated)
-
-        # static_fitness, _, _, _ = zip(*[self.simulation(individual) for individual in population])
-        # _, p_e, e_e, time = zip(*[self.simulation_local(individual) for individual in population])
-
-        # # number of defeated enemies in de fitness function opnemen
-
-        if max_enemies_defeated == len(enemies_selected) and enemies_defeated >= int(0.25 * len(population)): # all enemies are defeated
-            fitness = 0.1 * (100 - es) + 0.9 * np.array(ps) - np.log(np.minimum(np.array(ts), 3000))
-            print('step all defeated')
-        elif max_enemies_defeated > int(len(enemies_selected) / 2) and enemies_defeated >= int(0.25 * len(population)): # more than half of the enemies are defeated but not all
-            fitness = np.array(ps) - np.array(es) # individual gain #(enemies_defeated / len(self.env.enemies))**2 * (100 - np.array(e_e)) + (1 - (enemies_defeated / len(self.env.enemies))**2) * np.array(p_e)
-            print('step more than half')
-        elif max_enemies_defeated >= 2 and enemies_defeated >= int(0.25 * len(population)): # mostly focus on defeating enemies
-            fitness = 0.8 * (100 - np.array(es)) + 0.2 * np.array(ps) + 0.8 * np.array(enemies_defeated_total) * 10
-            print('step more than 2 less than half')
-        else: # fully focus on defeating enemies if population that defeats is too small
-            fitness = (100 - np.array(es)) + np.array(enemies_defeated_total) * 10
-            print('step less than or equal to 2')
-
-        # _, p_e, e_e, time = zip(*[self.simulation_local(individual) for individual in population])
-
-        # # number of defeated enemies in de fitness function opnemen
-        # fitness = np.zeros_like(static_fitness)
-        # for i in range(len(population)):
-
-        #     if enemies_defeated_total[i] == len(self.env.enemies): # all enemies are defeated
-        #         fitness[i] = 0.1 * (100 - e_e[i]) + 0.9 * p_e[i] - np.log(np.minimum(time[i], 3000))
-        #         # print('step all defeated')
-        #     elif enemies_defeated_total[i] > int(len(self.env.enemies) / 2): # more than half of the enemies are defeated but not all
-        #         fitness[i] = p_e[i] - e_e[i] # individual gain #(enemies_defeated / len(self.env.enemies))**2 * (100 - np.array(e_e)) + (1 - (enemies_defeated / len(self.env.enemies))**2) * np.array(p_e)
-        #         # print('step more than half')
-        #     elif enemies_defeated_total[i] >= 2: # mostly focus on defeating enemies
-        #         fitness[i] = 0.8 * (100 - e_e[i]) + 0.2 * p_e[i] + 0.8 * enemies_defeated_total[i] * 10
-        #         # print('step more than 2 less than half')
-        #     else: # fully focus on defeating enemies if population that defeats is too small
-        #         fitness[i] = (100 - e_e[i]) + enemies_defeated_total[i] * 10
-        #         # print('step less than or equal to 2')
-
-        # static_fitness = 0.9 * (100 - e_e) + 0.1 * p_e - log(time)
-
-        # fitness = static_fitness
-
-        return np.array([list(item) for item in zip(fitness, ps, es, ts, static_fitness)])
-
-
     def _vis_weights_fitness(self):
         import matplotlib.pyplot as plt
         plt.figure(figsize=(8, 4))
+        labels = ["Player energy", "Enemy energy", "Time"]
 
         # plot weights for each term in fitness function
-        for i in range(self.wfg.shape[0]):
-            plt.plot(np.array(range(self.total_generations)), self.wfg[i], label=f'Term {i + 1}')
+        # for i in range(self.wfg.shape[0]):
+            # plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[i], label=labels[i], alpha=0.5)
+        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[2], label=labels[2], alpha=0.8)
+        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[1], label=labels[1], alpha=0.8)
+        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[0], label=labels[0], alpha=0.8)
 
         # plot settings
         plt.title('Term Weights across Generations', fontsize=18)
         plt.xlabel('Generations', fontsize=16)
         plt.ylabel('Weights', fontsize=16)
+        plt.xticks(fontsize=14)
+        plt.yticks(fontsize=14)
         plt.ylim(0, 1)
         plt.xlim(1, self.total_generations)
         plt.grid()
-        plt.legend()
+        plt.legend(fontsize=14)
         plt.tight_layout()
 
         # save plot
@@ -285,23 +168,103 @@ class Generalist():
             _, params = population.shape
             population = population[:, :params - self.mutation_stepsize]
 
-        fs, ps, es, ts, _ = self.get_stats(population, True)
-        enemies_selected = np.array(self.enemy_train) - 1
-        # enemies_selected = self.enemy_selection(es, ps, ts)
+        fs, ps, es, ts = self.get_stats(population)
+        enemies_selected = np.array(self.enemy_train)-1
 
-        # static_fitness = self.get_mean(fs, enemies_selected)
-        static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7]) #TODO this might have to be changed to enemies_selected if we want to compare groups only
+        # get all information
+        static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7])
+        defeated = es[:, np.array(self.enemy_train)-1]
+        enemies_defeated_total = [len([x for x in defeat if x <= 0]) for defeat in defeated]
 
-        ps = self.get_mean(ps, enemies_selected)
-        es = self.get_mean(es, enemies_selected)
-        ts = self.get_mean(ts, enemies_selected)
+        ps = np.array(self.get_mean(ps, enemies_selected))
+        es = np.array(self.get_mean(es, enemies_selected))
+        ts = np.array(self.get_mean(ts, enemies_selected))
+
+        max_enemies_defeated = np.max(enemies_defeated_total)
+        enemies_defeated = enemies_defeated_total.count(max_enemies_defeated)
+        enemies_defeated_total = np.array(enemies_defeated_total)
+
+        # print number of defeated enemies
+        print(f"{enemies_defeated} individuals have defeated  {max_enemies_defeated} enemies")
 
         # custom fitness function
         fitness = self.wfg[0, self.generation_number] * ps # player health
         + self.wfg[1, self.generation_number] * (100 - es) # enemy health, '100 - es' is same as in baseline fitness func
-        - self.wfg[2, self.generation_number] * np.log(ts) # log time is same as in baseline fitness func
+        - self.wfg[2, self.generation_number] * np.log(np.minimum(ts, 3000)) # log time is same as in baseline fitness func
 
-        return np.array([list(item) for item in zip(fitness, ps, es, ts, static_fitness)])
+        return np.array([list(item) for item in zip(fitness, ps, es, ts, enemies_defeated_total, static_fitness)])
+
+    def fitness_eval_stepwise(self, population):
+        # remove step sizes from individuals when using controller
+        if self.mutation_type == "uncorrelated":
+            _, params = population.shape
+            population = population[:, :params - self.mutation_stepsize]
+
+        fs, ps, es, ts = self.get_stats(population)
+        enemies_selected = np.array(self.enemy_train)-1
+
+        # get all information
+        static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7])
+        defeated = es[:, np.array(self.enemy_train)-1]
+        enemies_defeated_total = [len([x for x in defeat if x <= 0]) for defeat in defeated]
+
+        ps = np.array(self.get_mean(ps, enemies_selected))
+        es = np.array(self.get_mean(es, enemies_selected))
+        ts = np.array(self.get_mean(ts, enemies_selected))
+
+        max_enemies_defeated = np.max(enemies_defeated_total)
+        enemies_defeated = enemies_defeated_total.count(max_enemies_defeated)
+        enemies_defeated_total = np.array(enemies_defeated_total)
+
+        # print number of defeated enemies
+        print(f"{enemies_defeated} individuals have defeated  {max_enemies_defeated} enemies")
+
+        # only switch every n iters to avoid fluctuating too much
+        iters = 5
+        ig = ps - es
+
+        if (self.generation_number+1) % iters == 0: # time to find new fitness function
+            if all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 4 for x in self.fitness_history['defeated']): # focus on ig
+                self.fitness_weights[0] = 2.5
+                self.fitness_weights[1] = 3
+                self.fitness_weights[2] = 1
+                self.fitness_weights[3] = 1
+                print('PUSH ENEMIES')
+            elif all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']): # focus on ed
+                self.fitness_weights[0] = 3
+                self.fitness_weights[1] = 2.5
+                self.fitness_weights[2] = 1
+                self.fitness_weights[3] = 1
+                print('LOW IG')
+            elif all(x >= -20 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']): # focus equally + extras
+                self.fitness_weights[0] = 2
+                self.fitness_weights[1] = 2
+                self.fitness_weights[2] = 1
+                self.fitness_weights[3] = 1
+                print('IG MET') # if baseline is met and ig is bigger than -20 (empirical tests), defeating and ig equally important, the rest becomes important
+            elif all(x >= 2 for x in self.fitness_history['defeated']): # focus on ig
+                self.fitness_weights[0] = 1
+                self.fitness_weights[1] = 2
+                self.fitness_weights[2] = 0.1
+                self.fitness_weights[3] = 0.1
+                print('BASELINE MET') # establish a baseline of defeating 2 enemies, and then prioritize ig
+            else: # focus on ed
+                self.fitness_weights[0] = 2
+                self.fitness_weights[1] = 1
+                self.fitness_weights[2] = 0.1
+                self.fitness_weights[3] = 0.1
+            self.fitness_history['defeated'] = []
+            self.fitness_history['ig'] = []
+
+        fitness = self.fitness_weights[0] * (100/len(self.enemy_train)) * enemies_defeated_total + self.fitness_weights[1]*ig + self.fitness_weights[2] * ps - self.fitness_weights[3] * np.log(np.minimum(ts, 3000))
+
+        self.fitness_history['defeated'].append(max_enemies_defeated)
+        self.fitness_history['ig'].append(np.max(ig))
+
+        # print(self.fitness_history)
+        # print(self.fitness_weights)
+
+        return np.array([list(item) for item in zip(fitness, ps, es, ts, enemies_defeated_total, static_fitness)])
 
     def initialize(self):
         if self.kaiming:
@@ -397,67 +360,32 @@ class Generalist():
 
         return total_offspring
 
-    def selection(self, new_population, new_fitness_population, new_static_fitness):
-        fitness = np.clip(new_fitness_population, 1e-10, None)
-        probs = (fitness)/np.sum(fitness)
-        chosen = np.random.choice(new_population.shape[0], self.population_size , p=probs, replace=False)
-        pop = new_population[chosen]
-        fit_pop = new_fitness_population[chosen]
-        stat_pop = new_static_fitness[chosen]
+    def selection(self, new_population, static_fitness, ed, dynamic_fitness):
+        # Fitness stability
+        fitness = np.clip(dynamic_fitness, 1e-10, None)
+        probs = fitness / np.sum(fitness)
+
+        top_percent_count = max(1, int(0.05 * self.population_size))  # Ensure at least 1 individual is selected
+
+        sorted_indices = np.argsort(-ed)  # Negative sign for descending order (high ed first)
+
+        top_percent_indices = sorted_indices[:top_percent_count]
+        fitness_sorted_top = top_percent_indices[np.argsort(-fitness[top_percent_indices])]  # Negative for descending
+        sorted_indices[:top_percent_count] = fitness_sorted_top
+        # print("new pop defeated enemies", ed[sorted_indices][0:5], "dynamic fitness", dynamic_fitness[sorted_indices][0:5])
+
+        # Random selection for the rest of the population (excluding top 5%)
+        remaining_indices = np.random.choice(new_population.shape[0], 
+                                            self.population_size - top_percent_count, 
+                                            p=probs, replace=False)
+
+        chosen_indices = np.concatenate((top_percent_indices, remaining_indices))
+
+        pop = new_population[chosen_indices]
+        fit_pop = dynamic_fitness[chosen_indices]
+        stat_pop = static_fitness[chosen_indices]
 
         return pop, fit_pop, stat_pop
-
-    # def enemy_selection(self, ee, pe, t):
-    #     """init:
-    #             self.e_sel_ee, self.e_sel_pe, self.e_sel_t, self.worst_enemies_history = [], [], [], []
-    #             self.worst_enemies = self.enemy_train[0:2]
-    #             ee = [lenpop, 8] enemy energy Numpy array
-    #             pe = [lenpop, 8] player energy Numpy array
-    #             t = [lenpop, 8] time Numpy array
-    #         returns
-    #             list with indexes of enmies
-    #     """
-    #     # select only ones were training on
-    #     ee, pe, t, = ee[:, np.array(self.enemy_train)-1], pe[:, np.array(self.enemy_train)-1], t[:, np.array(self.enemy_train)-1]
-    #     self.e_sel_ee.append(ee)
-    #     self.e_sel_pe.append(pe)
-    #     self.e_sel_t.append(t)
-
-    #     # select new enemies to foccus on if gen % 5 = 0
-    #     if self.generation_number % 2 == 0 and len(self.e_sel_ee) >= 2:
-    #         mean_ee = np.mean(np.mean(np.array(self.e_sel_ee[-2:]), axis=1), axis=0)  # see if this overflows ram assuming (5, lenpop, enmies)
-    #         mean_pe = np.mean(np.mean(np.array(self.e_sel_pe[-2:]), axis=1), axis=0)
-    #         mean_t = np.mean(np.mean(np.array(self.e_sel_t[-2:]), axis=1), axis=0)
-
-    #         gain = mean_pe - mean_ee
-    #         print(f"gain: {list(gain)}")
-    #         self.worst_enemies = np.argsort(gain)[0:2]
-    #         print(f"The new worst enemies are: {self.worst_enemies}")
-    #         print("History:\n", self.worst_enemies_history)
-
-    #         self.worst_enemies_history.append(list(self.worst_enemies))
-
-
-    #     return self.worst_enemies # return worst two enemies. in range (0,7) NOT (1,8)
-
-    def individual_simulation(self, neuron_values, enemies=False):
-        fs, ps, es, ts = [], [], [], []
-
-        # compute for all enemies
-        for enemy in range(1, 9):
-            
-            self.env.enemies = [enemy]
-            self.env.multiplemode = "no"
-            f, p, e, t = self.env.play(pcont=neuron_values)
-            
-            fs.append(f), ps.append(p), es.append(e), ts.append(t)
-
-        # number of enemies that this player has defeated
-        if enemies:
-            enemies_defeated = len([elem for elem in es if elem <= 0])
-            return fs, ps, es, ts, enemies_defeated
-
-        return fs, ps, es, ts
 
     def train(self):
         # if no earlier training is done:
@@ -540,12 +468,15 @@ class Generalist():
             new_population = np.vstack((population, offspring))
 
             # evaluate new population
-            new_fitness_results = self.fitness_func(offspring)
-            new_fitness_population = np.hstack((fitness_population, new_fitness_results[:, 0]))
-            new_static_fitness = np.hstack((static_fitness, new_fitness_results[:, -1]))
+            new_fitness_results = np.vstack((fitness_results, self.fitness_func(offspring)))  # dynamic_fitness, ps, es, ts, ed, static_fitness
+            # new_fitness_population = np.hstack((fitness_population, new_fitness_results[:, 0]))
+            # new_static_fitness = np.hstack((static_fitness, new_fitness_results[:, -1]))
 
             # select
-            population, fitness_population, static_fitness = self.selection(new_population, new_fitness_population, new_static_fitness)
+            population, fitness_population, static_fitness = self.selection(new_population=new_population,
+                                                                            static_fitness=new_fitness_results[:, -1],
+                                                                            dynamic_fitness=new_fitness_results[:, 0],
+                                                                            ed=new_fitness_results[:, -2])
 
             # save metrics for post-hoc evaluation
             best = np.argmax(static_fitness)
@@ -575,9 +506,6 @@ class Generalist():
                     std  = np.std(fitness_population)
 
                     with open(self.experiment_name + '/custom_fitness_results.txt', 'a') as f:
-                        # print(f"Best Baseline Fitness wrt Custom Fitness Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}" )
-                        # f.write(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}\n")
-
                         print(f"(Custom fitness) Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}" )
                         f.write(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}\n")
 
