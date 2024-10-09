@@ -290,7 +290,7 @@ class Generalist():
         # enemies_selected = self.enemy_selection(es, ps, ts)
 
         # static_fitness = self.get_mean(fs, enemies_selected)
-        static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7])
+        static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7]) #TODO this might have to be changed to enemies_selected if we want to compare groups only
 
         ps = self.get_mean(ps, enemies_selected)
         es = self.get_mean(es, enemies_selected)
@@ -622,7 +622,7 @@ class Generalist():
         parser.add_argument('-v', '--visualise_best', action="store_true", help="Shows the character when testing")
         parser.add_argument('-mp', '--mutation_probability', type=float, default=0.5, help="Probability an individual gets mutated")
         parser.add_argument('-te', '--test', action="store_true", help="Tests the selected bot / enemies")
-        parser.add_argument('-ff', '--fitness_function', default='dyna_steps', choices=['dyna_steps', 'dyna_gradual'], help='Choose a fitness function')
+        parser.add_argument('-ff', '--fitness_function', default='steps', choices=['steps', 'gradual'], help='Choose a fitness function')
         parser.add_argument('-lc', '--log_custom', action="store_true", help="Log info custom fitness function as well")
         parser.add_argument('-g', '--gens', type=str, default='20,40,60,80', help='4 generation numbers to adjust fitness function weights over')
         parser.add_argument('-fe', '--fitness_epsilon', type=float, default=0.2, help="Lowest probability for term in fitness function is fitness_epsilon / 2 ")
@@ -699,11 +699,17 @@ class Generalist():
         else:
             self.experiment_name += f'_init=random'
         
-        if args.fitness_function == "dyna_steps":
+        if args.fitness_function == "steps":
             self.fitness_func = self.fitness_eval_stepwise
-        elif args.fitness_function == "dyna_gradual":
+        elif args.fitness_function == "gradual":
             self.fitness_func = self.fitness_eval_gradual
             change_gens = [int(g) for g in args.gens.split(',')]
+
+            if len(change_gens) != 4:
+                raise ValueError("Please provide 4 generation numbers to change weights over")
+            if not 0 < args.fitness_epsilon <= 1:
+                raise ValueError("Please assign non-zero probability to args.fitness_epsilon")
+
             self._weights_fitness_gradual(gens=change_gens, epsilon=args.fitness_epsilon)
 
         return
