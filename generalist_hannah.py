@@ -26,10 +26,9 @@ class Generalist():
                 speed="fastest",
                 visuals=False,
                 multiplemode="yes", 
-                randomini="yes", 
                 # logs="yes"
                 )
-                
+
         self.global_env = Environment(experiment_name=self.experiment_name,
                 enemies=[1, 2, 3, 4, 5, 6, 7, 8],
                 playermode="ai",
@@ -42,7 +41,7 @@ class Generalist():
 
         self.fitness_history = {'defeated': [], 'ig': []}
         self.fitness_weights = [20, 1, 0.1, 0.1]
-        
+
         self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5 + self.mutation_stepsize
         if self.mutation_type == 'correlated':
             # CMA-ES State
@@ -56,7 +55,6 @@ class Generalist():
             self.train()
         elif self.testing:
             self.test()
-
 
     def _get_name(self):
         return self.experiment_name
@@ -79,16 +77,16 @@ class Generalist():
         return np.array([self.simulation(individual) for individual in population])
 
     def individual_simulation(self, neuron_values):
-        
+
         fs, ps, es, ts = [], [], [], []
 
         # compute for all enemies
         for enemy in range(1, 9):
-            
+
             self.env.enemies = [enemy]
             self.env.multiplemode = "no"
             f, p, e, t = self.env.play(pcont=neuron_values)
-            
+
             fs.append(f), ps.append(p), es.append(e), ts.append(t)
 
         return fs, ps, es, ts
@@ -101,7 +99,7 @@ class Generalist():
     def get_mean(self, stats, indices):
         selected_elements = [[stat[i] for i in indices] for stat in stats]
         return np.mean(selected_elements, axis=1)
-    
+
     def fitness_eval_stepwise(self, population):
         # remove step sizes from individuals when using controller
         if self.mutation_type == "uncorrelated":
@@ -111,10 +109,11 @@ class Generalist():
         fs, ps, es, ts = self.get_stats(population)
         enemies_selected = np.array(self.enemy_train)-1
 
-        # get all information 
+        # get all information
         static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7])
         defeated = es[:, np.array(self.enemy_train)-1]
         enemies_defeated_total = [len([x for x in defeat if x <= 0]) for defeat in defeated]
+
         ps = np.array(self.get_mean(ps, enemies_selected))
         es = np.array(self.get_mean(es, enemies_selected))
         ts = np.array(self.get_mean(ts, enemies_selected))
@@ -122,15 +121,14 @@ class Generalist():
         max_enemies_defeated = np.max(enemies_defeated_total)
         enemies_defeated = enemies_defeated_total.count(max_enemies_defeated)
         enemies_defeated_total = np.array(enemies_defeated_total)
-        
+
         # print number of defeated enemies
-        print(max_enemies_defeated, enemies_defeated)
+        print(f"{enemies_defeated} individuals have defeated  {max_enemies_defeated} enemies")
 
         # only switch every n iters to avoid fluctuating too much
         iters = 5
-
         ig = ps - es
-       
+
         if (self.generation_number+1) % iters == 0: # time to find new fitness function
             if all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 4 for x in self.fitness_history['defeated']): # focus on ig
                 self.fitness_weights[0] = 2.5
@@ -163,17 +161,16 @@ class Generalist():
                 self.fitness_weights[3] = 0.1
             self.fitness_history['defeated'] = []
             self.fitness_history['ig'] = []
-        
+
         fitness = self.fitness_weights[0] * (100/len(self.enemy_train)) * enemies_defeated_total + self.fitness_weights[1]*ig + self.fitness_weights[2] * ps - self.fitness_weights[3] * np.log(np.minimum(ts, 3000))
 
         self.fitness_history['defeated'].append(max_enemies_defeated)
         self.fitness_history['ig'].append(np.max(ig))
 
-        print(self.fitness_history)
-        print(self.fitness_weights)
+        # print(self.fitness_history)
+        # print(self.fitness_weights)
 
-        return np.array([list(item) for item in zip(fitness, ps, es, ts, static_fitness)])
-
+        return np.array([list(item) for item in zip(fitness, ps, es, ts, enemies_defeated_total, static_fitness)])
 
     def initialize(self):
         if self.kaiming:
@@ -269,14 +266,32 @@ class Generalist():
 
         return total_offspring
 
-    def selection(self, new_population, new_fitness_population, new_static_fitness):
-        # TODO: REWRITE
-        fitness = np.clip(new_fitness_population, 1e-10, None)
-        probs = (fitness)/np.sum(fitness)
-        chosen = np.random.choice(new_population.shape[0], self.population_size , p=probs, replace=False)
-        pop = new_population[chosen]
-        fit_pop = new_fitness_population[chosen]
-        stat_pop = new_static_fitness[chosen]
+
+    def selection(self, new_population, static_fitness, ed, dynamic_fitness):
+        # Fitness stability
+        print(len(ed))
+        fitness = np.clip(dynamic_fitness, 1e-10, None)
+        probs = fitness / np.sum(fitness)
+
+        top_percent_count = max(1, int(0.05 * self.population_size))  # Ensure at least 1 individual is selected
+
+        sorted_indices = np.argsort(-ed)  # Negative sign for descending order (high ed first)
+
+        top_percent_indices = sorted_indices[:top_percent_count]
+        fitness_sorted_top = top_percent_indices[np.argsort(-fitness[top_percent_indices])]  # Negative for descending
+        sorted_indices[:top_percent_count] = fitness_sorted_top
+        # print("new pop defeated enemies", ed[sorted_indices][0:5], "dynamic fitness", dynamic_fitness[sorted_indices][0:5])
+        # exit()
+        # Random selection for the rest of the population (excluding top 5%)
+        remaining_indices = np.random.choice(new_population.shape[0], 
+                                            self.population_size - top_percent_count, 
+                                            p=probs, replace=False)
+
+        chosen_indices = np.concatenate((top_percent_indices, remaining_indices))
+
+        pop = new_population[chosen_indices]
+        fit_pop = dynamic_fitness[chosen_indices]
+        stat_pop = static_fitness[chosen_indices]
 
         return pop, fit_pop, stat_pop
 
@@ -345,7 +360,6 @@ class Generalist():
                     self.C = CMA_params['C']
                     self.m = list(CMA_params['m'])
 
-        # fitness_population = self.fitness_eval_stepwise(population)[:, 0]
         fitness_results = self.fitness_eval_stepwise(population)
         fitness_population, static_fitness = fitness_results[:, 0], fitness_results[:, -1]
         # Evolution loop
@@ -361,12 +375,15 @@ class Generalist():
             new_population = np.vstack((population, offspring))
 
             # evaluate new population
-            new_fitness_results = self.fitness_eval_stepwise(offspring)
-            new_fitness_population = np.hstack((fitness_population, new_fitness_results[:, 0]))
-            new_static_fitness = np.hstack((static_fitness, new_fitness_results[:, -1]))
+            new_fitness_results = np.vstack((fitness_results, self.fitness_eval_stepwise(offspring)))  # dynamic_fitness, ps, es, ts, ed, static_fitness
+            # new_fitness_population = np.hstack((fitness_population, new_fitness_results[:, 0]))
+            # new_static_fitness = np.hstack((static_fitness, new_fitness_results[:, -1]))
 
             # select
-            population, fitness_population, static_fitness = self.selection(new_population, new_fitness_population, new_static_fitness)
+            population, fitness_population, static_fitness = self.selection(new_population=new_population,
+                                                                            static_fitness=new_fitness_results[:, -1],
+                                                                            dynamic_fitness=new_fitness_results[:, 0],
+                                                                            ed=new_fitness_results[:, -2])
 
             # save metrics for post-hoc evaluation
             best = np.argmax(static_fitness)
@@ -399,7 +416,7 @@ class Generalist():
                 if self.mutation_type == 'correlated':
                     np.savez(self.experiment_name + '/CMA_params.npz',
                             p_sigma=self.p_sigma, p_c=self.p_c, C=self.C, m=self.m)
-                
+
                 if self.log_custom:
                     # take best fitness from custom fitness population (does not need to be the best from baseline fitness population)
                     best = np.argmax(fitness_population)
