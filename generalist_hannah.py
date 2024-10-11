@@ -97,6 +97,114 @@ class Generalist():
         selected_elements = [[stat[i] for i in indices] for stat in stats]
         return np.mean(selected_elements, axis=1)
 
+    def _vis_weights_fitness(self):
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(8, 4))
+        labels = ["Player energy", "Enemy energy", "Time"]
+
+        # plot weights for each term in fitness function
+        # for i in range(self.wfg.shape[0]):
+            # plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[i], label=labels[i], alpha=0.5)
+        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[2], label=labels[2], alpha=0.8)
+        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[1], label=labels[1], alpha=0.8)
+        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[0], label=labels[0], alpha=0.8)
+
+        # plot settings
+        plt.title('Term Weights across Generations', fontsize=18)
+        plt.xlabel('Generations', fontsize=16)
+        plt.ylabel('Weights', fontsize=16)
+        plt.xticks(fontsize=14)
+        plt.yticks(fontsize=14)
+        plt.ylim(0, 1)
+        plt.xlim(1, self.total_generations)
+        plt.grid()
+        plt.legend(fontsize=14)
+        plt.tight_layout()
+
+        # save plot
+        os.makedirs(self.experiment_name, exist_ok=True)
+        plt.savefig(self.experiment_name + "/weight_distribution.png")
+
+    def _weights_fitness_gradual(self, gens, epsilon, num_terms=3):
+        """
+           Calculates self.wfg (num_terms, self.total_generations), containing
+           the parameter values per generation for dynamic_fitness_gradual.
+           
+           Args:
+            num_terms - int, number of weights in fitness function
+            gens - list of length 4, contains the generation numbers to hold values constant over
+                   and to gradually change them over
+            epsilon - float, lowest probability
+        """
+        # init weights for each generation
+        self.wfg = np.zeros((num_terms, self.total_generations))
+
+        # init for first gens
+        self.wfg[0, :gens[0]] = 1 - epsilon
+        self.wfg[1, :gens[0]] = epsilon / (num_terms - 1)
+
+        # gradual transition
+        steps_1 = np.linspace(1 - epsilon, epsilon / (num_terms - 1), gens[1] - gens[0])
+        self.wfg[0, gens[0]:gens[1]] = steps_1
+        self.wfg[1, gens[0]:gens[1]] = np.flip(steps_1)
+
+        # hold constant
+        self.wfg[0, gens[1]:gens[2]] = np.array([steps_1[-1]] * (gens[2] - gens[1]))
+        self.wfg[1, gens[1]:gens[2]] = np.array([steps_1[0]] * (gens[2] - gens[1]))
+
+        # time term is constant until penultimate gens
+        self.wfg[2, :gens[2]] = epsilon / (num_terms - 1)
+
+         # move them to equal weight
+        end_weight = 1 / num_terms
+        self.wfg[0, gens[2]:gens[3]] = np.linspace(self.wfg[0, gens[2] - 1], end_weight, gens[3] - gens[2])
+        self.wfg[1, gens[2]:gens[3]] = np.linspace(self.wfg[1, gens[2] - 1], end_weight, gens[3] - gens[2])
+        self.wfg[2, gens[2]:gens[3]] = np.linspace(self.wfg[2, gens[2] - 1], end_weight, gens[3] - gens[2])
+
+        # keep constant for final gens
+        self.wfg[0, gens[3]:] = np.array([self.wfg[0, gens[3]-1]] * (self.total_generations - gens[3]))
+        self.wfg[1, gens[3]:] = np.array([self.wfg[1, gens[3]-1]] * (self.total_generations - gens[3]))
+        self.wfg[2, gens[3]:] = np.array([self.wfg[2, gens[3]-1]] * (self.total_generations - gens[3]))
+    
+        # visualise weight probability distribution
+        self._vis_weights_fitness()
+
+    def fitness_eval_gradual(self, population):
+        # remove step sizes from individuals when using controller
+        if self.mutation_type == "uncorrelated":
+            _, params = population.shape
+            population = population[:, :params - self.mutation_stepsize]
+
+        fs, ps, es, ts = self.get_stats(population)
+        enemies_selected = np.array(self.enemy_train)-1
+
+        # get all information
+        static_fitness = self.get_mean(fs, enemies_selected)
+        defeated = es[:, np.array(self.enemy_train)-1]
+        enemies_defeated_number = [len([x for x in defeat if x <= 0]) for defeat in defeated]
+
+        ps = np.array(self.get_mean(ps, enemies_selected))
+        es = np.array(self.get_mean(es, enemies_selected))
+        ts = np.array(self.get_mean(ts, enemies_selected))
+
+        max_enemies_defeated = np.max(enemies_defeated_number)
+        enemies_defeated = enemies_defeated_number.count(max_enemies_defeated)
+        print(f"{enemies_defeated} individuals have defeated {np.max(enemies_defeated_number)} enemies")
+
+        # max_enemies_defeated = np.max(enemies_defeated_total)
+        # enemies_defeated = enemies_defeated_total.count(max_enemies_defeated)
+        # enemies_defeated_total = np.array(enemies_defeated_total)
+
+        # # print number of defeated enemies
+        # print(f"{enemies_defeated} individuals have defeated  {max_enemies_defeated} enemies")
+
+        # custom fitness function
+        fitness = self.wfg[0, self.generation_number] * ps # player health
+        + self.wfg[1, self.generation_number] * (100 - es) # enemy health, '100 - es' is same as in baseline fitness func
+        - self.wfg[2, self.generation_number] * np.log(np.minimum(ts, 3000)) # log time is same as in baseline fitness func
+
+        return np.array([list(item) for item in zip(fitness, ps, es, ts, enemies_defeated_number, static_fitness)])
+
     def fitness_eval_stepwise(self, population):
         # remove step sizes from individuals when using controller
         if self.mutation_type == "uncorrelated":
@@ -120,7 +228,10 @@ class Generalist():
         ts = np.array(self.get_mean(ts, enemies_selected))
 
         # print number of defeated enemies
-        print(f"{np.max(enemies_defeated_number)} individuals have defeated  {np.max(enemies_defeated_number)} enemies")
+        max_enemies_defeated = np.max(enemies_defeated_number)
+        enemies_defeated = enemies_defeated_number.count(max_enemies_defeated)
+        print(f"{enemies_defeated} individuals have defeated {np.max(enemies_defeated_number)} enemies")
+        # print(f"{np.max(enemies_defeated_number)} individuals have defeated  {np.max(enemies_defeated_number)} enemies")
 
         enemies_score = np.array([20, 10, 10, 20, 10, 20, 10, 20])
         fitness = np.array(np.sum(enemies_defeated_total * enemies_score, axis=-1)) + 0.9 * (100 - es) + 0.1 * ps - np.log(np.minimum(ts, 3000))
@@ -355,7 +466,8 @@ class Generalist():
                     self.C = CMA_params['C']
                     self.m = list(CMA_params['m'])
 
-        fitness_results = self.fitness_eval_stepwise(population)
+        # fitness_results = self.fitness_eval_stepwise(population)
+        fitness_results = self.fitness_func(population)
         fitness_population, static_fitness = fitness_results[:, 0], fitness_results[:, -1]
         # Evolution loop
         for gen_idx in tqdm.tqdm(range(self.generation_number, self.total_generations)):
@@ -370,7 +482,7 @@ class Generalist():
             new_population = np.vstack((population, offspring))
 
             # evaluate new population
-            new_fitness_results = self.fitness_eval_stepwise(offspring)
+            new_fitness_results = self.fitness_func(offspring)
             new_fitness_population = np.hstack((fitness_population, new_fitness_results[:, 0]))
             new_static_fitness = np.hstack((static_fitness, new_fitness_results[:, -1]))
 
@@ -474,6 +586,10 @@ class Generalist():
         parser.add_argument('-te', '--test', action="store_true", help="Tests the selected bot / enemies")
         parser.add_argument('-lc', '--log_custom', action="store_true", help="Log info custom fitness function as well")
         parser.add_argument('-hi', '--handin', action="store_true", help="Slice sigma values of genes when storing best solution")
+        parser.add_argument('-ff', '--fitness_function', default='steps', choices=['steps', 'gradual'], help='Choose a fitness function')
+        parser.add_argument('-g', '--gens', type=str, default='20,40,60,80', help='4 generation numbers to adjust fitness function weights over')
+        parser.add_argument('-fe', '--fitness_epsilon', type=float, default=0.2, help="Lowest probability for term in fitness function is fitness_epsilon / 2 ")
+
 
         args = parser.parse_args()
         self.population_size = args.population_size
@@ -519,6 +635,7 @@ class Generalist():
         self.experiment_name += f'_l={self.lowerbound}'
         self.experiment_name += f'_mutationtype={self.mutation_type}'
         self.experiment_name += f'_mutationprobability={self.mutation_probability}'
+        self.experiment_name += f'_fitnessfunc={args.fitness_function}' #TODO idk if this messes up plot code
 
 
         if self.mutation_type == 'uncorrelated':
@@ -544,6 +661,19 @@ class Generalist():
             self.experiment_name += f'_init=kaiming'
         else:
             self.experiment_name += f'_init=random'
+
+        if args.fitness_function == "steps":
+            self.fitness_func = self.fitness_eval_stepwise
+        elif args.fitness_function == "gradual":
+            self.fitness_func = self.fitness_eval_gradual
+            change_gens = [int(g) for g in args.gens.split(',')]
+
+            if len(change_gens) != 4:
+                raise ValueError("Please provide 4 generation numbers to change weights over")
+            if not 0 < args.fitness_epsilon <= 1:
+                raise ValueError("Please assign non-zero probability to args.fitness_epsilon")
+
+            self._weights_fitness_gradual(gens=change_gens, epsilon=args.fitness_epsilon)
 
         return
 
