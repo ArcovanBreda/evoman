@@ -9,8 +9,8 @@ import tqdm
 
 
 class Generalist():
-    def __init__(self) -> None:
-        self.parse_args()
+    def __init__(self, args) -> None:
+        self.parse_args(args)
         os.makedirs(self.experiment_name, exist_ok=True)
 
         self.controller = player_controller(self.n_hidden_neurons)
@@ -49,11 +49,12 @@ class Generalist():
             self.C = np.eye(self.n_vars)
             self.m = []
 
-        if self.trainmode:
-            os.environ["SDL_VIDEODRIVER"] = "dummy"
-            self.train()
-        elif self.testing:
-            self.test()
+        if not args.hyperstudy:
+            if self.trainmode:
+                os.environ["SDL_VIDEODRIVER"] = "dummy"
+                self.train()
+            elif self.testing:
+                self.test()
 
     def _get_name(self):
         return self.experiment_name
@@ -172,7 +173,7 @@ class Generalist():
         enemies_selected = np.array(self.enemy_train)-1
 
         # get all information
-        static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7])
+        static_fitness = self.get_mean(fs, enemies_selected)
         defeated = es[:, np.array(self.enemy_train)-1]
         enemies_defeated_total = [len([x for x in defeat if x <= 0]) for defeat in defeated]
 
@@ -389,7 +390,19 @@ class Generalist():
 
     def train(self):
         # if no earlier training is done:
-        if not os.path.exists(self.experiment_name+'/results.txt'):
+        if args.hyperstudy:
+            population = self.initialize()
+            self.generation_number = 0
+            # self.env = Environment(experiment_name=self.experiment_name,
+            #         enemies=[self.enemy_train],
+            #         playermode="ai",
+            #         player_controller=self.controller,
+            #         enemymode="static",
+            #         level=2,
+            #         speed="fastest",
+            #         visuals=False)
+        elif not os.path.exists(self.experiment_name+'/results.txt'):
+            # print("HERE? ")
             # See if there is a run with 100 runs before continuing with 200
             experiment_name2 = self.experiment_name.split("_")
             experiment_name2[3] = "gens=100"
@@ -454,7 +467,7 @@ class Generalist():
         # fitness_population = self.fitness_eval_stepwise(population)[:, 0]
         fitness_results = self.fitness_func(population)
         fitness_population, static_fitness = fitness_results[:, 0], fitness_results[:, -1]
-        
+
         # Evolution loop
         for gen_idx in tqdm.tqdm(range(self.generation_number, self.total_generations)):
             self.generation_number = gen_idx
@@ -524,39 +537,42 @@ class Generalist():
                 # update for CMA
                 self.update_evolution_paths(mean, prev_m, population)
 
-    def parse_args(self):
-        parser = argparse.ArgumentParser()
-        parser.add_argument('-exp', '--experiment_name', type=str, default='test', help='Name of experiment')
-        parser.add_argument('-ps', '--population_size', type=int, default=100, help='Size of the population')
-        parser.add_argument('-tg', '--total_generations', type=int, default=100, help='Number of generations to run for')
-        parser.add_argument('-n', '--n_hidden_neurons', type=int, default=10, help='Hidden layer size')
-        parser.add_argument('-u', '--upperbound', type=int, default=1)
-        parser.add_argument('-l', '--lowerbound', type=int, default=-1)
-        parser.add_argument('-k', '--kaiming', action="store_true", help='Use Kaiming initialization of NN weights')
-        parser.add_argument('-m', '--mutation', default='uncorrelated', choices=['uncorrelated', 'correlated', 'addition'])
-        parser.add_argument('-ms', '--mutation_stepsize', type=int, default=0)
-        parser.add_argument('-mt', '--mutation_threshold', type=float, default=0.001, help='epsilon_0 for uncorrelated mutation')
-        parser.add_argument('-s', '--sigma_init', type=float, default=0.5, help='Init value for sigma(s) added to genes')
-        parser.add_argument('-sc', '--sigma_init_corr', type=float, default=0.5, help='Init value for sigma(s) for correlated')
-        parser.add_argument('-c', '--c_sigma', type=float, default=0.3, help='Init value for c_sigma (correlated)')
-        parser.add_argument('-cc', '--c_c', type=float, default=0.2, help='Init value for c_c (correlated)')
-        parser.add_argument('-ds', '--d_sigma', type=float, default=0.5, help='Init value for d_sigma (correlated)')
-        parser.add_argument('-c1', '--c_1', type=float, default=0.1, help='Init value for c_1 (correlated)')
-        parser.add_argument('-cmu', '--c_mu', type=float, default=0.1, help='Init value for c_mu (correlated)')
-        parser.add_argument('-etr', '--enemy_train', type=str, default="2", help='Enemy to fight during training')
-        parser.add_argument('-ete', '--enemy_test', type=str, default='2', help='Enemy to fight during testing (1,3,5)')
-        parser.add_argument('-t', '--train', action="store_true", help='Train EA')
-        parser.add_argument('-is', '--intermediate_save', action="store_true", help="Don't automaticaly save states.")
-        parser.add_argument('-v', '--visualise_best', action="store_true", help="Shows the character when testing")
-        parser.add_argument('-mp', '--mutation_probability', type=float, default=0.5, help="Probability an individual gets mutated")
-        parser.add_argument('-te', '--test', action="store_true", help="Tests the selected bot / enemies")
-        parser.add_argument('-ff', '--fitness_function', default='steps', choices=['steps', 'gradual'], help='Choose a fitness function')
-        parser.add_argument('-lc', '--log_custom', action="store_true", help="Log info custom fitness function as well")
-        parser.add_argument('-g', '--gens', type=str, default='20,40,60,80', help='4 generation numbers to adjust fitness function weights over')
-        parser.add_argument('-fe', '--fitness_epsilon', type=float, default=0.2, help="Lowest probability for term in fitness function is fitness_epsilon / 2 ")
-        parser.add_argument('-hi', '--handin', action="store_true", help="Slice sigma values of genes when storing best solution")
+        return fitness_population, static_fitness
 
-        args = parser.parse_args()
+    def parse_args(self, args):
+        # parser = argparse.ArgumentParser()
+        # parser.add_argument('-exp', '--experiment_name', type=str, default='test', help='Name of experiment')
+        # parser.add_argument('-ps', '--population_size', type=int, default=100, help='Size of the population')
+        # parser.add_argument('-tg', '--total_generations', type=int, default=100, help='Number of generations to run for')
+        # parser.add_argument('-n', '--n_hidden_neurons', type=int, default=10, help='Hidden layer size')
+        # parser.add_argument('-u', '--upperbound', type=int, default=1)
+        # parser.add_argument('-l', '--lowerbound', type=int, default=-1)
+        # parser.add_argument('-k', '--kaiming', action="store_true", help='Use Kaiming initialization of NN weights')
+        # parser.add_argument('-m', '--mutation', default='uncorrelated', choices=['uncorrelated', 'correlated', 'addition'])
+        # parser.add_argument('-ms', '--mutation_stepsize', type=int, default=0)
+        # parser.add_argument('-mt', '--mutation_threshold', type=float, default=0.001, help='epsilon_0 for uncorrelated mutation')
+        # parser.add_argument('-s', '--sigma_init', type=float, default=0.5, help='Init value for sigma(s) added to genes')
+        # parser.add_argument('-sc', '--sigma_init_corr', type=float, default=0.5, help='Init value for sigma(s) for correlated')
+        # parser.add_argument('-c', '--c_sigma', type=float, default=0.3, help='Init value for c_sigma (correlated)')
+        # parser.add_argument('-cc', '--c_c', type=float, default=0.2, help='Init value for c_c (correlated)')
+        # parser.add_argument('-ds', '--d_sigma', type=float, default=0.5, help='Init value for d_sigma (correlated)')
+        # parser.add_argument('-c1', '--c_1', type=float, default=0.1, help='Init value for c_1 (correlated)')
+        # parser.add_argument('-cmu', '--c_mu', type=float, default=0.1, help='Init value for c_mu (correlated)')
+        # parser.add_argument('-etr', '--enemy_train', type=str, default="2", help='Enemy to fight during training')
+        # parser.add_argument('-ete', '--enemy_test', type=str, default='2', help='Enemy to fight during testing (1,3,5)')
+        # parser.add_argument('-t', '--train', action="store_true", help='Train EA')
+        # parser.add_argument('-is', '--intermediate_save', action="store_true", help="Don't automaticaly save states.")
+        # parser.add_argument('-v', '--visualise_best', action="store_true", help="Shows the character when testing")
+        # parser.add_argument('-mp', '--mutation_probability', type=float, default=0.5, help="Probability an individual gets mutated")
+        # parser.add_argument('-te', '--test', action="store_true", help="Tests the selected bot / enemies")
+        # parser.add_argument('-ff', '--fitness_function', default='steps', choices=['steps', 'gradual'], help='Choose a fitness function')
+        # parser.add_argument('-lc', '--log_custom', action="store_true", help="Log info custom fitness function as well")
+        # parser.add_argument('-g', '--gens', type=str, default='20,40,60,80', help='4 generation numbers to adjust fitness function weights over')
+        # parser.add_argument('-fe', '--fitness_epsilon', type=float, default=0.2, help="Lowest probability for term in fitness function is fitness_epsilon / 2 ")
+        # parser.add_argument('-hi', '--handin', action="store_true", help="Slice sigma values of genes when storing best solution")
+        # parser.add_argument('-hy', '--hyperstudy', action="store_true", help="Use optuna for hyperparameter tuning")
+
+        # args = parser.parse_args()
         self.population_size = args.population_size
         self.total_generations = args.total_generations
         self.n_hidden_neurons = args.n_hidden_neurons
@@ -576,6 +592,7 @@ class Generalist():
         self.testing = args.test
         self.log_custom = True if args.log_custom else False
         self.handin = True if args.handin else False
+        self.hyperstudy = True if args.hyperstudy else False
 
         # CMA-ES Parameters
         if self.mutation_type == 'correlated':
@@ -588,7 +605,7 @@ class Generalist():
 
         # usage check
         if self.mutation_type == 'uncorrelated' and self.mutation_stepsize < 1:
-            parser.error("--mutation_stepsize must be >= 1 for uncorrelated mutation")
+            raise ValueError("--mutation_stepsize must be >= 1 for uncorrelated mutation")
 
         # file name generation
         # folder_name = "experiments/"
@@ -676,5 +693,99 @@ class Generalist():
                 raise NotImplementedError
         return scores
 
+def parse_args_global():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-exp', '--experiment_name', type=str, default='test', help='Name of experiment')
+    parser.add_argument('-ps', '--population_size', type=int, default=100, help='Size of the population')
+    parser.add_argument('-tg', '--total_generations', type=int, default=100, help='Number of generations to run for')
+    parser.add_argument('-n', '--n_hidden_neurons', type=int, default=10, help='Hidden layer size')
+    parser.add_argument('-u', '--upperbound', type=int, default=1)
+    parser.add_argument('-l', '--lowerbound', type=int, default=-1)
+    parser.add_argument('-k', '--kaiming', action="store_true", help='Use Kaiming initialization of NN weights')
+    parser.add_argument('-m', '--mutation', default='uncorrelated', choices=['uncorrelated', 'correlated', 'addition'])
+    parser.add_argument('-ms', '--mutation_stepsize', type=int, default=0)
+    parser.add_argument('-mt', '--mutation_threshold', type=float, default=0.001, help='epsilon_0 for uncorrelated mutation')
+    parser.add_argument('-s', '--sigma_init', type=float, default=0.5, help='Init value for sigma(s) added to genes')
+    parser.add_argument('-sc', '--sigma_init_corr', type=float, default=0.5, help='Init value for sigma(s) for correlated')
+    parser.add_argument('-c', '--c_sigma', type=float, default=0.3, help='Init value for c_sigma (correlated)')
+    parser.add_argument('-cc', '--c_c', type=float, default=0.2, help='Init value for c_c (correlated)')
+    parser.add_argument('-ds', '--d_sigma', type=float, default=0.5, help='Init value for d_sigma (correlated)')
+    parser.add_argument('-c1', '--c_1', type=float, default=0.1, help='Init value for c_1 (correlated)')
+    parser.add_argument('-cmu', '--c_mu', type=float, default=0.1, help='Init value for c_mu (correlated)')
+    parser.add_argument('-etr', '--enemy_train', type=str, default="2", help='Enemy to fight during training')
+    parser.add_argument('-ete', '--enemy_test', type=str, default='2', help='Enemy to fight during testing (1,3,5)')
+    parser.add_argument('-t', '--train', action="store_true", help='Train EA')
+    parser.add_argument('-is', '--intermediate_save', action="store_true", help="Don't automaticaly save states.")
+    parser.add_argument('-v', '--visualise_best', action="store_true", help="Shows the character when testing")
+    parser.add_argument('-mp', '--mutation_probability', type=float, default=0.5, help="Probability an individual gets mutated")
+    parser.add_argument('-te', '--test', action="store_true", help="Tests the selected bot / enemies")
+    parser.add_argument('-ff', '--fitness_function', default='steps', choices=['steps', 'gradual'], help='Choose a fitness function')
+    parser.add_argument('-lc', '--log_custom', action="store_true", help="Log info custom fitness function as well")
+    parser.add_argument('-g', '--gens', type=str, default='20,40,60,80', help='4 generation numbers to adjust fitness function weights over')
+    parser.add_argument('-fe', '--fitness_epsilon', type=float, default=0.2, help="Lowest probability for term in fitness function is fitness_epsilon / 2 ")
+    parser.add_argument('-hi', '--handin', action="store_true", help="Slice sigma values of genes when storing best solution")
+    parser.add_argument('-hy', '--hyperstudy', action="store_true", help="Use optuna for hyperparameter tuning")
+
+    args = parser.parse_args()
+
+    return args
+
 if __name__ == '__main__':
-    generalist = Generalist()
+    args = parse_args_global()
+
+    if args.hyperstudy:
+        import optuna
+
+        def objective(trial):
+
+            # classifier = trial.suggest_categorical("classifier", ["RandomForest", "SVC"])
+            classifier = Generalist(args)
+            classifier.enemy_train = [1, 2, 3, 4, 5, 6, 7, 8]
+
+            ps = trial.suggest_int("population_size", 10, 150)
+            # standaard over alle enemies !!! #TODO
+
+            classifier.total_generations = 5 #TODO
+            classifier.ps = ps
+
+            total_gens = trial.suggest_int("total generations", 20, 250) #TODO deze aanpassen als die te hoge gens pakt
+            classifier.total_generations = total_gens
+
+
+            # TODO: mutation prob, sigma init waardes [0 - 1], recombination prob [0 - 1], total_generations voor beide
+            # TODO: if -ff "steps" -> gamma, alpha en alle 8 enemies in range [10, 50]
+            # TODO else -> 4 gen numbers en epsilon
+
+            # print("AAA", ps)
+
+            # if classifier == "RandomForest":
+            # n_estimators = trial.suggest_int("n_estimators", 2, 20)
+            # max_depth = int(trial.suggest_float("max_depth", 1, 32, log=True))
+
+                # clf = sklearn.ensemble.RandomForestClassifier(
+                    # n_estimators=n_estimators, max_depth=max_depth
+                # )
+            # else:
+                # c = trial.suggest_float("svc_c", 1e-10, 1e10, log=True)
+
+                # clf = sklearn.svm.SVC(C=c, gamma="auto")
+
+            # return sklearn.model_selection.cross_val_score(
+                # clf, iris.data, iris.target, n_jobs=-1, cv=3
+            # ).mean()
+
+            final = classifier.train()
+            return final[1].mean() # optimize mean over individual for static fitness
+        
+        study = optuna.create_study(direction="maximize")
+        study.optimize(objective, n_trials=100) #TODO
+
+        trial = study.best_trial
+
+        print("Static Fitness: {}".format(trial.value))
+        print("Best hyperparameters: {}".format(trial.params))
+
+        # optuna.visualization.plot_optimization_history(study) #hiervoor plotly nodig
+    else:
+        generalist = Generalist(args)
+
