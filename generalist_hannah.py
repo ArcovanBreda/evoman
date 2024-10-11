@@ -40,7 +40,7 @@ class Generalist():
                 multiplemode="yes", randomini="no")
 
         self.fitness_history = {'defeated': [], 'ig': []}
-        self.fitness_weights = [20, 1, 0.1, 0.1]
+        self.fitness_weights = [3, 1.5, 0.5, 0.5]
 
         self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5 + self.mutation_stepsize
         if self.mutation_type == 'correlated':
@@ -129,46 +129,105 @@ class Generalist():
         iters = 5
         ig = ps - es
 
+        # if (self.generation_number+1) % iters == 0: # time to find new fitness function
+        #     if all(x >= 0 for x in self.fitness_history['ig']) and all(x >= 5 for x in self.fitness_history['defeated']): # High Performance Stage
+        #         self.fitness_weights[0] = 0.1
+        #         self.fitness_weights[1] = 1.5
+        #         self.fitness_weights[2] = 2
+        #         self.fitness_weights[3] = 2
+        #         print('High Performance Stage') # really good performance so focus on optimalisation
+        #     elif all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 4 for x in self.fitness_history['defeated']): # Mid Performance stage
+        #         self.fitness_weights[0] = 0.1
+        #         self.fitness_weights[1] = 2
+        #         self.fitness_weights[2] = 1.5
+        #         self.fitness_weights[3] = 1.5
+        #         print('Mid Performance Stage') # pretty good performance, so push both enemies and performance before final stage
+        #     elif all(x >= 4 for x in self.fitness_history['defeated']): # Baseline stage
+        #         self.fitness_weights[0] = 0.1
+        #         self.fitness_weights[1] = 3
+        #         self.fitness_weights[2] = 1
+        #         self.fitness_weights[3] = 1
+        #         print('Baseline Stage') # push performance a little harder, not enemies because many defeat 4
+        #     else: # Initial stage
+        #         self.fitness_weights[0] = 2
+        #         self.fitness_weights[1] = 1.5
+        #         self.fitness_weights[2] = 0.5
+        #         self.fitness_weights[3] = 1
+        #         print('Initial Stage') # focus on defeating enemies
+        #     self.fitness_history['defeated'] = []
+        #     self.fitness_history['ig'] = []
+
+        # worst enemies are more valuable than best enemies
+
         if (self.generation_number+1) % iters == 0: # time to find new fitness function
-            if all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 4 for x in self.fitness_history['defeated']): # focus on ig
+            if all(x >= 0 for x in self.fitness_history['ig']) and all(x >= 4 for x in self.fitness_history['defeated']): # High Performance Stage
+                self.fitness_weights[0] = 0
+                self.fitness_weights[1] = 1.5
+                self.fitness_weights[2] = 2
+                self.fitness_weights[3] = 2
+                print('High Performance Stage') # really good performance so focus on optimalisation
+            elif all(x >= -20 for x in self.fitness_history['ig']) and all(x >= 4 for x in self.fitness_history['defeated']): # Mid Performance stage
+                self.fitness_weights[0] = 2
+                self.fitness_weights[1] = 2
+                self.fitness_weights[2] = 1.5
+                self.fitness_weights[3] = 1.5
+                print('Mid Performance Stage') # pretty good performance, so push both enemies and performance before final stage
+            elif all(x >= -30 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']): # Baseline stage
                 self.fitness_weights[0] = 2.5
                 self.fitness_weights[1] = 3
                 self.fitness_weights[2] = 1
                 self.fitness_weights[3] = 1
-                print('PUSH ENEMIES')
-            elif all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']): # focus on ed
+                print('Baseline Stage') # push performance a little harder, not enemies because many defeat 4
+            else: # Initial stage
                 self.fitness_weights[0] = 3
-                self.fitness_weights[1] = 2.5
-                self.fitness_weights[2] = 1
-                self.fitness_weights[3] = 1
-                print('LOW IG')
-            elif all(x >= -20 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']): # focus equally + extras
-                self.fitness_weights[0] = 2
-                self.fitness_weights[1] = 2
-                self.fitness_weights[2] = 1
-                self.fitness_weights[3] = 1
-                print('IG MET') # if baseline is met and ig is bigger than -20 (empirical tests), defeating and ig equally important, the rest becomes important
-            elif all(x >= 2 for x in self.fitness_history['defeated']): # focus on ig
-                self.fitness_weights[0] = 1
-                self.fitness_weights[1] = 2
-                self.fitness_weights[2] = 0.1
-                self.fitness_weights[3] = 0.1
-                print('BASELINE MET') # establish a baseline of defeating 2 enemies, and then prioritize ig
-            else: # focus on ed
-                self.fitness_weights[0] = 2
-                self.fitness_weights[1] = 1
-                self.fitness_weights[2] = 0.1
-                self.fitness_weights[3] = 0.1
+                self.fitness_weights[1] = 1.5
+                self.fitness_weights[2] = 0.5
+                self.fitness_weights[3] = 0.5
+                print('Initial Stage') # focus on defeating enemies
             self.fitness_history['defeated'] = []
             self.fitness_history['ig'] = []
+
+        # if (self.generation_number+1) % iters == 0: # time to find new fitness function
+        #     if all((x >= 4 for x in self.fitness_history['defeated']))
+        #     if all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 4 for x in self.fitness_history['defeated']): # focus on ig
+        #         self.fitness_weights[0] = 2.5
+        #         self.fitness_weights[1] = 3
+        #         self.fitness_weights[2] = 1
+        #         self.fitness_weights[3] = 1
+        #         print('PUSH ENEMIES')
+        #     elif all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']): # focus on ed
+        #         self.fitness_weights[0] = 3
+        #         self.fitness_weights[1] = 2.5
+        #         self.fitness_weights[2] = 1
+        #         self.fitness_weights[3] = 1
+        #         print('LOW IG')
+        #     elif all(x >= -20 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']): # focus equally + extras
+        #         self.fitness_weights[0] = 2
+        #         self.fitness_weights[1] = 2
+        #         self.fitness_weights[2] = 1
+        #         self.fitness_weights[3] = 1
+        #         print('IG MET') # if baseline is met and ig is bigger than -20 (empirical tests), defeating and ig equally important, the rest becomes important
+        #     elif all(x >= 2 for x in self.fitness_history['defeated']): # focus on ig
+        #         self.fitness_weights[0] = 1
+        #         self.fitness_weights[1] = 2
+        #         self.fitness_weights[2] = 0.1
+        #         self.fitness_weights[3] = 0.1
+        #         print('BASELINE MET') # establish a baseline of defeating 2 enemies, and then prioritize ig
+        #     else: # focus on ed
+        #         self.fitness_weights[0] = 2
+        #         self.fitness_weights[1] = 1
+        #         self.fitness_weights[2] = 0.1
+        #         self.fitness_weights[3] = 0.1
+        #     self.fitness_history['defeated'] = []
+        #     self.fitness_history['ig'] = []
 
         fitness = self.fitness_weights[0] * (100/len(self.enemy_train)) * enemies_defeated_total + self.fitness_weights[1]*ig + self.fitness_weights[2] * ps - self.fitness_weights[3] * np.log(np.minimum(ts, 3000))
 
         self.fitness_history['defeated'].append(max_enemies_defeated)
         self.fitness_history['ig'].append(np.max(ig))
 
-        # print(self.fitness_history)
-        # print(self.fitness_weights)
+        print(self.fitness_history)
+        print(self.fitness_weights)
 
         return np.array([list(item) for item in zip(fitness, ps, es, ts, enemies_defeated_total, static_fitness)])
 
@@ -266,30 +325,41 @@ class Generalist():
 
         return total_offspring
 
-    def selection(self, new_population, static_fitness, ed, dynamic_fitness):
-        # Fitness stability
-        fitness = np.clip(dynamic_fitness, 1e-10, None)
-        probs = fitness / np.sum(fitness)
+    # def selection(self, new_population, static_fitness, ed, dynamic_fitness):
+    #     # Fitness stability
+    #     fitness = np.clip(dynamic_fitness, 1e-10, None)
+    #     probs = fitness / np.sum(fitness)
 
-        top_percent_count = max(1, int(0.05 * self.population_size))  # Ensure at least 1 individual is selected
+    #     top_percent_count = max(1, int(0.05 * self.population_size))  # Ensure at least 1 individual is selected
 
-        sorted_indices = np.argsort(-ed)  # Negative sign for descending order (high ed first)
+    #     sorted_indices = np.argsort(-ed)  # Negative sign for descending order (high ed first)
 
-        top_percent_indices = sorted_indices[:top_percent_count]
-        fitness_sorted_top = top_percent_indices[np.argsort(-fitness[top_percent_indices])]  # Negative for descending
-        sorted_indices[:top_percent_count] = fitness_sorted_top
-        # print("new pop defeated enemies", ed[sorted_indices][0:5], "dynamic fitness", dynamic_fitness[sorted_indices][0:5])
+    #     top_percent_indices = sorted_indices[:top_percent_count]
+    #     fitness_sorted_top = top_percent_indices[np.argsort(-fitness[top_percent_indices])]  # Negative for descending
+    #     sorted_indices[:top_percent_count] = fitness_sorted_top
+    #     # print("new pop defeated enemies", ed[sorted_indices][0:5], "dynamic fitness", dynamic_fitness[sorted_indices][0:5])
 
-        # Random selection for the rest of the population (excluding top 5%)
-        remaining_indices = np.random.choice(new_population.shape[0], 
-                                            self.population_size - top_percent_count, 
-                                            p=probs, replace=False)
+    #     # Random selection for the rest of the population (excluding top 5%)
+    #     remaining_indices = np.random.choice(new_population.shape[0], 
+    #                                         self.population_size - top_percent_count, 
+    #                                         p=probs, replace=False)
 
-        chosen_indices = np.concatenate((top_percent_indices, remaining_indices))
+    #     chosen_indices = np.concatenate((top_percent_indices, remaining_indices))
 
-        pop = new_population[chosen_indices]
-        fit_pop = dynamic_fitness[chosen_indices]
-        stat_pop = static_fitness[chosen_indices]
+    #     pop = new_population[chosen_indices]
+    #     fit_pop = dynamic_fitness[chosen_indices]
+    #     stat_pop = static_fitness[chosen_indices]
+
+    #     return pop, fit_pop, stat_pop
+
+    def selection(self, new_population, new_fitness_population, new_static_fitness):
+        # TODO: REWRITE
+        fitness = np.clip(new_fitness_population, 1e-10, None)
+        probs = (fitness)/np.sum(fitness)
+        chosen = np.random.choice(new_population.shape[0], self.population_size , p=probs, replace=False)
+        pop = new_population[chosen]
+        fit_pop = new_fitness_population[chosen]
+        stat_pop = new_static_fitness[chosen]
 
         return pop, fit_pop, stat_pop
 
@@ -373,15 +443,21 @@ class Generalist():
             new_population = np.vstack((population, offspring))
 
             # evaluate new population
-            new_fitness_results = np.vstack((fitness_results, self.fitness_eval_stepwise(offspring)))  # dynamic_fitness, ps, es, ts, ed, static_fitness
-            # new_fitness_population = np.hstack((fitness_population, new_fitness_results[:, 0]))
-            # new_static_fitness = np.hstack((static_fitness, new_fitness_results[:, -1]))
+            new_fitness_results = self.fitness_eval_stepwise(offspring)
+            new_fitness_population = np.hstack((fitness_population, new_fitness_results[:, 0]))
+            new_static_fitness = np.hstack((static_fitness, new_fitness_results[:, -1]))
 
             # select
-            population, fitness_population, static_fitness = self.selection(new_population=new_population,
-                                                                            static_fitness=new_fitness_results[:, -1],
-                                                                            dynamic_fitness=new_fitness_results[:, 0],
-                                                                            ed=new_fitness_results[:, -2])
+            population, fitness_population, static_fitness = self.selection(new_population, new_fitness_population, new_static_fitness)
+            # new_fitness_results = np.vstack((fitness_results, self.fitness_eval_stepwise(offspring)))  # dynamic_fitness, ps, es, ts, ed, static_fitness
+            # # new_fitness_population = np.hstack((fitness_population, new_fitness_results[:, 0]))
+            # # new_static_fitness = np.hstack((static_fitness, new_fitness_results[:, -1]))
+
+            # # select
+            # population, fitness_population, static_fitness = self.selection(new_population=new_population,
+            #                                                                 static_fitness=new_fitness_results[:, -1],
+            #                                                                 dynamic_fitness=new_fitness_results[:, 0],
+            #                                                                 ed=new_fitness_results[:, -2])
 
             # save metrics for post-hoc evaluation
             best = np.argmax(static_fitness)
