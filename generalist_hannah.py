@@ -39,9 +39,6 @@ class Generalist():
                 visuals=False,
                 multiplemode="yes", randomini="no")
 
-        self.fitness_history = {'defeated': [], 'ig': []}
-        self.fitness_weights = [3, 1.5, 0.5, 0.5]
-
         self.n_vars = (self.env.get_num_sensors() + 1) * self.n_hidden_neurons + (self.n_hidden_neurons + 1) * 5 + self.mutation_stepsize
         if self.mutation_type == 'correlated':
             # CMA-ES State
@@ -110,126 +107,25 @@ class Generalist():
         enemies_selected = np.array(self.enemy_train)-1
 
         # get all information
-        static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7])
+        # static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7])
+        static_fitness = self.get_mean(fs, enemies_selected)
         defeated = es[:, np.array(self.enemy_train)-1]
-        enemies_defeated_total = [len([x for x in defeat if x <= 0]) for defeat in defeated]
+
+        # per individual list with defeated enemies
+        enemies_defeated_total = np.array([[1 if x <= 0 else 0 for x in defeat] for defeat in defeated])
+        enemies_defeated_number = [len([x for x in defeat if x <= 0]) for defeat in defeated]
 
         ps = np.array(self.get_mean(ps, enemies_selected))
         es = np.array(self.get_mean(es, enemies_selected))
         ts = np.array(self.get_mean(ts, enemies_selected))
 
-        max_enemies_defeated = np.max(enemies_defeated_total)
-        enemies_defeated = enemies_defeated_total.count(max_enemies_defeated)
-        enemies_defeated_total = np.array(enemies_defeated_total)
-
         # print number of defeated enemies
-        print(f"{enemies_defeated} individuals have defeated  {max_enemies_defeated} enemies")
+        print(f"{np.max(enemies_defeated_number)} individuals have defeated  {np.max(enemies_defeated_number)} enemies")
 
-        # only switch every n iters to avoid fluctuating too much
-        iters = 5
-        ig = ps - es
+        enemies_score = np.array([20, 10, 10, 20, 10, 20, 10, 20])
+        fitness = np.array(np.sum(enemies_defeated_total * enemies_score, axis=-1)) + 0.9 * (100 - es) + 0.1 * ps - np.log(np.minimum(ts, 3000))
 
-        # if (self.generation_number+1) % iters == 0: # time to find new fitness function
-        #     if all(x >= 0 for x in self.fitness_history['ig']) and all(x >= 5 for x in self.fitness_history['defeated']): # High Performance Stage
-        #         self.fitness_weights[0] = 0.1
-        #         self.fitness_weights[1] = 1.5
-        #         self.fitness_weights[2] = 2
-        #         self.fitness_weights[3] = 2
-        #         print('High Performance Stage') # really good performance so focus on optimalisation
-        #     elif all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 4 for x in self.fitness_history['defeated']): # Mid Performance stage
-        #         self.fitness_weights[0] = 0.1
-        #         self.fitness_weights[1] = 2
-        #         self.fitness_weights[2] = 1.5
-        #         self.fitness_weights[3] = 1.5
-        #         print('Mid Performance Stage') # pretty good performance, so push both enemies and performance before final stage
-        #     elif all(x >= 4 for x in self.fitness_history['defeated']): # Baseline stage
-        #         self.fitness_weights[0] = 0.1
-        #         self.fitness_weights[1] = 3
-        #         self.fitness_weights[2] = 1
-        #         self.fitness_weights[3] = 1
-        #         print('Baseline Stage') # push performance a little harder, not enemies because many defeat 4
-        #     else: # Initial stage
-        #         self.fitness_weights[0] = 2
-        #         self.fitness_weights[1] = 1.5
-        #         self.fitness_weights[2] = 0.5
-        #         self.fitness_weights[3] = 1
-        #         print('Initial Stage') # focus on defeating enemies
-        #     self.fitness_history['defeated'] = []
-        #     self.fitness_history['ig'] = []
-
-        # worst enemies are more valuable than best enemies
-
-        if (self.generation_number+1) % iters == 0: # time to find new fitness function
-            if all(x >= 0 for x in self.fitness_history['ig']) and all(x >= 4 for x in self.fitness_history['defeated']): # High Performance Stage
-                self.fitness_weights[0] = 0
-                self.fitness_weights[1] = 1.5
-                self.fitness_weights[2] = 2
-                self.fitness_weights[3] = 2
-                print('High Performance Stage') # really good performance so focus on optimalisation
-            elif all(x >= -20 for x in self.fitness_history['ig']) and all(x >= 4 for x in self.fitness_history['defeated']): # Mid Performance stage
-                self.fitness_weights[0] = 2
-                self.fitness_weights[1] = 2
-                self.fitness_weights[2] = 1.5
-                self.fitness_weights[3] = 1.5
-                print('Mid Performance Stage') # pretty good performance, so push both enemies and performance before final stage
-            elif all(x >= -30 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']): # Baseline stage
-                self.fitness_weights[0] = 2.5
-                self.fitness_weights[1] = 3
-                self.fitness_weights[2] = 1
-                self.fitness_weights[3] = 1
-                print('Baseline Stage') # push performance a little harder, not enemies because many defeat 4
-            else: # Initial stage
-                self.fitness_weights[0] = 3
-                self.fitness_weights[1] = 1.5
-                self.fitness_weights[2] = 0.5
-                self.fitness_weights[3] = 0.5
-                print('Initial Stage') # focus on defeating enemies
-            self.fitness_history['defeated'] = []
-            self.fitness_history['ig'] = []
-
-        # if (self.generation_number+1) % iters == 0: # time to find new fitness function
-        #     if all((x >= 4 for x in self.fitness_history['defeated']))
-        #     if all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 4 for x in self.fitness_history['defeated']): # focus on ig
-        #         self.fitness_weights[0] = 2.5
-        #         self.fitness_weights[1] = 3
-        #         self.fitness_weights[2] = 1
-        #         self.fitness_weights[3] = 1
-        #         print('PUSH ENEMIES')
-        #     elif all(x >= -10 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']): # focus on ed
-        #         self.fitness_weights[0] = 3
-        #         self.fitness_weights[1] = 2.5
-        #         self.fitness_weights[2] = 1
-        #         self.fitness_weights[3] = 1
-        #         print('LOW IG')
-        #     elif all(x >= -20 for x in self.fitness_history['ig']) and all(x >= 2 for x in self.fitness_history['defeated']): # focus equally + extras
-        #         self.fitness_weights[0] = 2
-        #         self.fitness_weights[1] = 2
-        #         self.fitness_weights[2] = 1
-        #         self.fitness_weights[3] = 1
-        #         print('IG MET') # if baseline is met and ig is bigger than -20 (empirical tests), defeating and ig equally important, the rest becomes important
-        #     elif all(x >= 2 for x in self.fitness_history['defeated']): # focus on ig
-        #         self.fitness_weights[0] = 1
-        #         self.fitness_weights[1] = 2
-        #         self.fitness_weights[2] = 0.1
-        #         self.fitness_weights[3] = 0.1
-        #         print('BASELINE MET') # establish a baseline of defeating 2 enemies, and then prioritize ig
-        #     else: # focus on ed
-        #         self.fitness_weights[0] = 2
-        #         self.fitness_weights[1] = 1
-        #         self.fitness_weights[2] = 0.1
-        #         self.fitness_weights[3] = 0.1
-        #     self.fitness_history['defeated'] = []
-        #     self.fitness_history['ig'] = []
-
-        fitness = self.fitness_weights[0] * (100/len(self.enemy_train)) * enemies_defeated_total + self.fitness_weights[1]*ig + self.fitness_weights[2] * ps - self.fitness_weights[3] * np.log(np.minimum(ts, 3000))
-
-        self.fitness_history['defeated'].append(max_enemies_defeated)
-        self.fitness_history['ig'].append(np.max(ig))
-
-        print(self.fitness_history)
-        print(self.fitness_weights)
-
-        return np.array([list(item) for item in zip(fitness, ps, es, ts, enemies_defeated_total, static_fitness)])
+        return np.array([list(item) for item in zip(fitness, ps, es, ts, enemies_defeated_number, static_fitness)])
 
     def initialize(self):
         if self.kaiming:
@@ -308,6 +204,8 @@ class Generalist():
         self.sigma = self.sigma * np.exp((np.linalg.norm(self.p_sigma) / np.sqrt(
             1 - (1 - self.c_sigma)**(2 * (self.generation_number + 1))) - 1) / self.d_sigma)
 
+    '''
+    old crossover
     def crossover(self, parents):
         total_offspring = np.zeros((0, self.n_vars))
 
@@ -322,6 +220,35 @@ class Generalist():
             offspring = p1 * cross_prop + p2 * (1 - cross_prop)
             offspring = self.mutation(offspring)
             total_offspring = np.vstack((total_offspring, offspring))
+
+        return total_offspring
+    '''
+
+    def crossover(self, parents):
+        total_offspring = np.zeros((0, self.n_vars))
+
+        for i in range(len(parents)):
+            p1 = parents[i]
+            if i == len(parents) - 1:
+                p2 = parents[0]
+            else:
+                p2 = parents[i+1]
+
+            # do recombination with 50%
+            if np.random.uniform(0, 1) > 0.5:
+                cross_prop = 0.5
+                offspring = p1 * cross_prop + p2 * (1 - cross_prop)
+                offspring = self.mutation(offspring)
+                total_offspring = np.vstack((total_offspring, offspring))
+                # continue
+            
+            # add mutated parent[i] with 25%
+            elif np.random.uniform(0, 1) > 0.5:
+                offspring = self.mutation(p1)
+                total_offspring = np.vstack((total_offspring, offspring))
+            # else:  # add parent[i] with 25%
+            #     total_offspring = np.vstack((total_offspring, p1))
+                
 
         return total_offspring
 
