@@ -354,7 +354,7 @@ class Generalist():
                 # continue
             
             # add mutated parent[i] with 25%
-            elif np.random.uniform(0, 1) > 0.5:
+            else:
                 offspring = self.mutation(p1)
                 total_offspring = np.vstack((total_offspring, offspring))
             # else:  # add parent[i] with 25%
