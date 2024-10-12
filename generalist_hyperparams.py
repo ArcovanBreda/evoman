@@ -752,10 +752,10 @@ if __name__ == '__main__':
             classifier.enemy_train = [1, 2, 3, 4, 5, 6, 7, 8] # reinit to be safe
             classifier.env.enemies = [1, 2, 3, 4, 5, 6, 7, 8] # reinit to be safe
 
-            ps = trial.suggest_int("population_size", 10, 150)
+            ps = trial.suggest_int("population_size", 10, 100)
             classifier.ps = ps
 
-            total_gens = trial.suggest_int("total generations", 8, 250) #TODO deze aanpassen als die te hoge gens pakt. Lower bound is vgm minimaal 8 voor scheduler dus die niet aanpassen svp
+            total_gens = trial.suggest_int("total generations", 8, 100) #TODO deze aanpassen als die te hoge gens pakt. Lower bound is vgm minimaal 8 voor scheduler dus die niet aanpassen svp
             classifier.total_generations = total_gens
 
             mutation_prob = trial.suggest_float("mutation prob", 0, 1)
@@ -790,10 +790,10 @@ if __name__ == '__main__':
                 classifier.epsilon_fitness = eps
 
                 # gen numbers need to be ascending, not overlap with certain space to force transitions
-                gen1 = trial.suggest_int("gen1", 0, total_gens - 8) # low and high both incl for trial
-                gen2 = trial.suggest_categorical("gen2", [i for i in range(gen1 + 3, total_gens - 5 + 1)]) # range does not have end incl
-                gen3 = trial.suggest_categorical("gen3", [i for i in range(gen2 + 1, total_gens - 4 + 1)])
-                gen4 = trial.suggest_categorical("gen4", [i for i in range(gen3 + 3, total_gens)])
+                gen1 = trial.suggest_int("gen1", 0, total_gens - 8)
+                gen2 = trial.suggest_int("gen2", gen1 + 3, total_gens - 5)
+                gen3 = trial.suggest_int("gen3", gen2 + 1, total_gens - 4)
+                gen4 = trial.suggest_int("gen4", gen3 + 3, total_gens - 1)
 
                 classifier.gens = [gen1, int(gen2), int(gen3), int(gen4)]
 
@@ -804,7 +804,7 @@ if __name__ == '__main__':
             return final[1].mean() # optimize mean over individual for static fitness
         
         study = optuna.create_study(direction="maximize")
-        study.optimize(objective, n_trials=100) #TODO n_trials aanpassen als je laptop vliegt
+        study.optimize(objective, n_trials=2) #TODO n_trials aanpassen als je laptop vliegt
 
         trial = study.best_trial
 
