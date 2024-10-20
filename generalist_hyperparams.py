@@ -11,7 +11,6 @@ import tqdm
 class Generalist():
     def __init__(self, args) -> None:
         self.parse_args(args)
-        print("hallo")
 
         if not os.path.exists(self.experiment_name):
             os.makedirs(self.experiment_name)
@@ -101,18 +100,13 @@ class Generalist():
 
     def _vis_weights_fitness(self):
         import matplotlib.pyplot as plt
-        plt.figure(figsize=(8, 4))
+        plt.figure(figsize=(7, 3))
         labels = ["Player energy", "Enemy energy", "Time"]
+        colors = ["purple", "orange", "cyan"]
 
-        # plot weights for each term in fitness function
-        # for i in range(self.wfg.shape[0]):
-            # plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[i], label=labels[i], alpha=0.5)
-        # plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[2], label=labels[2], alpha=0.8)
-        # plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[1], label=labels[1], alpha=0.8)
-        # plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[0], label=labels[0], alpha=0.8)
-        plt.scatter(np.array(range(self.total_generations)) + 1, self.wfg[2], label=labels[2], alpha=0.8)
-        plt.scatter(np.array(range(self.total_generations)) + 1, self.wfg[1], label=labels[1], alpha=0.8)
-        plt.scatter(np.array(range(self.total_generations)) + 1, self.wfg[0], label=labels[0], alpha=0.8)
+        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[1], label=labels[1], color=colors[1], alpha=0.4, linewidth=3)
+        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[0], label=labels[0], color=colors[0], alpha=0.4, linewidth=3)
+        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[2], label=labels[2], color=colors[2], alpha=1)
 
         # plot settings
         plt.title('Term Weights across Generations', fontsize=18)
@@ -196,13 +190,6 @@ class Generalist():
         enemies_defeated = enemies_defeated_number.count(max_enemies_defeated)
         print(f"{enemies_defeated} individuals have defeated {np.max(enemies_defeated_number)} enemies")
 
-        # max_enemies_defeated = np.max(enemies_defeated_total)
-        # enemies_defeated = enemies_defeated_total.count(max_enemies_defeated)
-        # enemies_defeated_total = np.array(enemies_defeated_total)
-
-        # # print number of defeated enemies
-        # print(f"{enemies_defeated} individuals have defeated  {max_enemies_defeated} enemies")
-
         # custom fitness function
         fitness = self.wfg[0, self.generation_number] * ps # player health
         + self.wfg[1, self.generation_number] * (100 - es) # enemy health, '100 - es' is same as in baseline fitness func
@@ -236,9 +223,7 @@ class Generalist():
         max_enemies_defeated = np.max(enemies_defeated_number)
         enemies_defeated = enemies_defeated_number.count(max_enemies_defeated)
         print(f"{enemies_defeated} individuals have defeated {np.max(enemies_defeated_number)} enemies")
-        # print(f"{np.max(enemies_defeated_number)} individuals have defeated  {np.max(enemies_defeated_number)} enemies")
 
-        # enemies_score = np.array([20, 10, 10, 20, 10, 20, 10, 20])
         enemies_score = np.array(self.enemy_weights)
         fitness = np.array(np.sum(enemies_defeated_total * enemies_score, axis=-1)) + self.gamma * (100 - es) + self.alpha * ps - np.log(np.minimum(ts, 3000))
 
@@ -321,26 +306,6 @@ class Generalist():
         self.sigma = self.sigma * np.exp((np.linalg.norm(self.p_sigma) / np.sqrt(
             1 - (1 - self.c_sigma)**(2 * (self.generation_number + 1))) - 1) / self.d_sigma)
 
-    '''
-    old crossover
-    def crossover(self, parents):
-        total_offspring = np.zeros((0, self.n_vars))
-
-        for i in range(len(parents)):
-            p1 = parents[i]
-            if i == len(parents) - 1:
-                p2 = parents[0]
-            else:
-                p2 = parents[i+1]
-
-            cross_prop = 0.5
-            offspring = p1 * cross_prop + p2 * (1 - cross_prop)
-            offspring = self.mutation(offspring)
-            total_offspring = np.vstack((total_offspring, offspring))
-
-        return total_offspring
-    '''
-
     def crossover(self, parents):
         total_offspring = np.zeros((0, self.n_vars))
 
@@ -365,7 +330,6 @@ class Generalist():
                 total_offspring = np.vstack((total_offspring, offspring))
             # else:  # add parent[i] with 25%
             #     total_offspring = np.vstack((total_offspring, p1))
-                
 
         return total_offspring
 
@@ -397,7 +361,6 @@ class Generalist():
     #     return pop, fit_pop, stat_pop
 
     def selection(self, new_population, new_fitness_population, new_static_fitness):
-        # TODO: REWRITE
         fitness = np.clip(new_fitness_population, 1e-10, None)
         probs = (fitness)/np.sum(fitness)
         chosen = np.random.choice(new_population.shape[0], self.population_size , p=probs, replace=False)
@@ -497,32 +460,12 @@ class Generalist():
 
             # select
             population, fitness_population, static_fitness = self.selection(new_population, new_fitness_population, new_static_fitness)
-            # new_fitness_results = np.vstack((fitness_results, self.fitness_eval_stepwise(offspring)))  # dynamic_fitness, ps, es, ts, ed, static_fitness
-            # # new_fitness_population = np.hstack((fitness_population, new_fitness_results[:, 0]))
-            # # new_static_fitness = np.hstack((static_fitness, new_fitness_results[:, -1]))
-
-            # # select
-            # population, fitness_population, static_fitness = self.selection(new_population=new_population,
-            #                                                                 static_fitness=new_fitness_results[:, -1],
-            #                                                                 dynamic_fitness=new_fitness_results[:, 0],
-            #                                                                 ed=new_fitness_results[:, -2])
 
             # save metrics for post-hoc evaluation
             best = np.argmax(static_fitness)
             mean = np.mean(static_fitness)
             std  = np.std(static_fitness)
 
-            # if not self.intermediate_save:
-            #     with open(self.experiment_name + '/results.txt', 'a') as f:
-            #         # save as best, mean, std
-            #         print(f"Generation {gen_idx}: {static_fitness[best]:.5f} {mean:.5f} {std:.5f}" )
-            #         f.write(f"Generation {gen_idx}: {static_fitness[best]:.5f} {mean:.5f} {std:.5f}\n")
-
-            #     np.savetxt(self.experiment_name + '/best.txt', population[best])
-
-            #     if self.mutation_type == 'correlated':
-            #         np.savez(self.experiment_name + '/CMA_params.npz',
-            #                 p_sigma=self.p_sigma, p_c=self.p_c, C=self.C, m=self.m)
             if not self.intermediate_save:
                 with open(self.experiment_name + '/results.txt', 'a') as f:
                     # save as best, mean, std
@@ -546,9 +489,6 @@ class Generalist():
                     std  = np.std(fitness_population)
 
                     with open(self.experiment_name + '/custom_fitness_results.txt', 'a') as f:
-                        # print(f"Best Baseline Fitness wrt Custom Fitness Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}" )
-                        # f.write(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}\n")
-
                         print(f"(Custom fitness) Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}" )
                         f.write(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}\n")
 
@@ -813,7 +753,7 @@ if __name__ == '__main__':
         study = optuna.create_study(study_name='optuna_study', direction="maximize", storage=storage_url, load_if_exists=True)
 
         with parallel_backend('multiprocessing'):
-            study.optimize(objective, n_trials=10, n_jobs=1)
+            study.optimize(objective, n_trials=100, n_jobs=1)
 
         trial = study.best_trial
 
