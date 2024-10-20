@@ -2,6 +2,7 @@ import argparse
 from evoman.environment import Environment
 from demo_controller import player_controller
 from parent_selection import dynamic_selection
+import cma
 
 import numpy as np
 import os
@@ -17,6 +18,7 @@ class Generalist():
 
         self.controller = player_controller(self.n_hidden_neurons)
 
+        self.best_fitness = 0
         self.env = Environment(experiment_name=self.experiment_name,
                 enemies=self.enemy_train,
                 playermode="ai",
@@ -99,26 +101,27 @@ class Generalist():
 
     def _vis_weights_fitness(self):
         import matplotlib.pyplot as plt
-        plt.figure(figsize=(8, 4))
+        plt.figure(figsize=(7, 3))
         labels = ["Player energy", "Enemy energy", "Time"]
+        colors = ["purple", "orange", "cyan"]
 
         # plot weights for each term in fitness function
         # for i in range(self.wfg.shape[0]):
             # plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[i], label=labels[i], alpha=0.5)
-        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[2], label=labels[2], alpha=0.8)
-        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[1], label=labels[1], alpha=0.8)
-        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[0], label=labels[0], alpha=0.8)
+        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[1], label=labels[1], color=colors[1], alpha=0.4, linewidth=3)
+        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[0], label=labels[0], color=colors[0], alpha=0.4, linewidth=3)
+        plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[2], label=labels[2], color=colors[2], alpha=1)
 
         # plot settings
-        plt.title('Term Weights across Generations', fontsize=18)
-        plt.xlabel('Generations', fontsize=16)
-        plt.ylabel('Weights', fontsize=16)
+        plt.title(f'Term Weights across Generations with ε={self.fitness_epsilon:.2f}', fontsize=14)
+        plt.xlabel('Generations', fontsize=14)
+        plt.ylabel('Weights', fontsize=14)
         plt.xticks(fontsize=14)
         plt.yticks(fontsize=14)
         plt.ylim(0, 1)
         plt.xlim(1, self.total_generations)
         plt.grid()
-        plt.legend(fontsize=14)
+        plt.legend(fontsize=12, bbox_to_anchor=(1, 0.75))
         plt.tight_layout()
 
         # save plot
@@ -129,6 +132,9 @@ class Generalist():
         """
            Calculates self.wfg (num_terms, self.total_generations), containing
            the parameter values per generation for dynamic_fitness_gradual.
+           wfg[0, :] is Enemy Energy
+           wfg[1, :] is Player Energy
+           wfg[2, :] is time
 
            Args:
             num_terms - int, number of weights in fitness function
@@ -140,17 +146,17 @@ class Generalist():
         self.wfg = np.zeros((num_terms, self.total_generations))
 
         # init for first gens
-        self.wfg[0, :gens[0]] = 1 - epsilon
-        self.wfg[1, :gens[0]] = epsilon / (num_terms - 1)
+        self.wfg[1, :gens[0]] = 1 - epsilon
+        self.wfg[0, :gens[0]] = epsilon / (num_terms - 1)
 
         # gradual transition
         steps_1 = np.linspace(1 - epsilon, epsilon / (num_terms - 1), gens[1] - gens[0])
-        self.wfg[0, gens[0]:gens[1]] = steps_1
-        self.wfg[1, gens[0]:gens[1]] = np.flip(steps_1)
+        self.wfg[1, gens[0]:gens[1]] = steps_1
+        self.wfg[0, gens[0]:gens[1]] = np.flip(steps_1)
 
         # hold constant
-        self.wfg[0, gens[1]:gens[2]] = np.array([steps_1[-1]] * (gens[2] - gens[1]))
-        self.wfg[1, gens[1]:gens[2]] = np.array([steps_1[0]] * (gens[2] - gens[1]))
+        self.wfg[1, gens[1]:gens[2]] = np.array([steps_1[-1]] * (gens[2] - gens[1]))
+        self.wfg[0, gens[1]:gens[2]] = np.array([steps_1[0]] * (gens[2] - gens[1]))
 
         # time term is constant until penultimate gens
         self.wfg[2, :gens[2]] = epsilon / (num_terms - 1)
@@ -165,7 +171,7 @@ class Generalist():
         self.wfg[0, gens[3]:] = np.array([self.wfg[0, gens[3]-1]] * (self.total_generations - gens[3]))
         self.wfg[1, gens[3]:] = np.array([self.wfg[1, gens[3]-1]] * (self.total_generations - gens[3]))
         self.wfg[2, gens[3]:] = np.array([self.wfg[2, gens[3]-1]] * (self.total_generations - gens[3]))
-    
+
         # visualise weight probability distribution
         self._vis_weights_fitness()
 
@@ -234,19 +240,21 @@ class Generalist():
         # print(f"{np.max(enemies_defeated_number)} individuals have defeated  {np.max(enemies_defeated_number)} enemies")
 
         enemies_score = np.array([16, 18, 40, 50, 20, 12, 23, 22])  # e1': 16, 'e2': 18, 'e3': 40, 'e4': 50, 'e5': 20, 'e6': 12, 'e7': 23, 'e8': 22,
-        enemies_score = enemies_score[self.enemy_train] -1
+        enemies = [en - 1 for en in self.enemy_train]
+        enemies_score = enemies_score[enemies]
         fitness = np.array(np.sum(enemies_defeated_total * enemies_score, axis=-1)) + 0.8135347605703016 * (100 - es) + 0.1 * ps - np.log(np.minimum(ts, 3000))
 
         return np.array([list(item) for item in zip(fitness, ps, es, ts, enemies_defeated_number, static_fitness)])
 
     def initialize(self):
         data = []
-        with open("experiments/Leonardo/kill-8-bestgainexperiment.txt") as f:
+        with open(f"experiments/run{5}_popusize=100_enemy=[1, 2, 3, 4, 5, 6, 7, 8]_gens=1000_hiddensize=10_u=1_l=-1_fitnessfunc=steps_init=kaiming_seed={5}/best.txt") as f:
             for line in f:
                 data.append(float(line))
         data = np.array(data)
+        return data
         # total_weights = np.tile(data, (self.population_size, 1)) + np.random.randn(self.population_size, 265) * 0.01
-        
+
         if self.kaiming:
             n_actions = 5
             n_inputs = 20
@@ -270,302 +278,58 @@ class Generalist():
 
         return total_weights
 
-    def mutation(self, child):
-        """Expects a single child as input and mutates it."""
-        if np.random.uniform() > self.mutation_probability:
-            return child
-
-        if self.mutation_type == 'uncorrelated':
-            n = self.n_vars - self.mutation_stepsize
-
-            if self.mutation_stepsize == 1:
-                # update sigma
-                tau = 1 / np.sqrt(n)
-                sigma_prime = child[-1] * np.exp(np.random.normal(0, tau))
-                sigma_prime = np.maximum(sigma_prime, self.mutation_threshold)
-
-                # update child
-                mutations = np.random.normal(0, sigma_prime, size=n) / 10
-                child_mutated = (child[:n] + mutations).tolist()
-                child_mutated.append(sigma_prime)
-            elif self.mutation_stepsize == n:
-                # update sigmas
-                tau_prime = 1 / np.sqrt(2 * n)
-                tau = 1 / np.sqrt(2 * np.sqrt(n))
-                sigma_prime = child[n:] * np.exp(np.random.normal(0, tau_prime) + np.random.normal(0, tau, size=n))
-                sigma_prime = np.maximum(sigma_prime, self.mutation_threshold)
-
-                # update child
-                mutations = np.random.normal(0, sigma_prime)
-                child_mutated = (child[:n] + mutations).tolist()
-                child_mutated += sigma_prime.tolist()
-            else:
-                raise NotImplementedError("Please set mutation step size to 1 or equal to # parameters")
-        elif self.mutation_type == 'correlated':
-            # CMA-ES mutation
-            child_mutated = np.random.multivariate_normal(mean=child, cov=self.sigma**2 * self.C)
-        elif self.mutation_type == 'addition':
-            # to check old behavior
-            child_mutated = [i + np.random.normal(0, 1) if np.random.uniform() <= self.mutation_probability else i for i in range(len(child))]
-
-        child_mutated = np.clip(child_mutated, self.lowerbound, self.upperbound)
-        return child_mutated
-
-    def update_evolution_paths(self, m, m_prime, population):
-        #  Tracks how far the search is moving and helps adjust the step size for balanced exploration
-        self.p_sigma = (1 - self.c_sigma) * self.p_sigma + np.sqrt(self.c_sigma * (2 - self.c_sigma)) * (m - m_prime) / self.sigma
-        # Tracks the direction of the search and helps update the covariance matrix, improving the ability to mutate correlated parameters
-        self.p_c = (1 - self.c_c) * self.p_c + np.sqrt(self.c_c * (2 - self.c_c)) * (m - m_prime) / self.sigma
-
-        self.C = (1 - self.c_1 - self.c_mu) * self.C + self.c_1 * np.outer(self.p_c, self.p_c) + self.c_mu * np.sum(
-            [np.outer(ind - m_prime, ind - m_prime) / self.sigma**2 for ind in population], axis=0)
-
-        # Update step size sigma
-        self.sigma = self.sigma * np.exp((np.linalg.norm(self.p_sigma) / np.sqrt(
-            1 - (1 - self.c_sigma)**(2 * (self.generation_number + 1))) - 1) / self.d_sigma)
-
-    '''
-    old crossover
-    def crossover(self, parents):
-        total_offspring = np.zeros((0, self.n_vars))
-
-        for i in range(len(parents)):
-            p1 = parents[i]
-            if i == len(parents) - 1:
-                p2 = parents[0]
-            else:
-                p2 = parents[i+1]
-
-            cross_prop = 0.5
-            offspring = p1 * cross_prop + p2 * (1 - cross_prop)
-            offspring = self.mutation(offspring)
-            total_offspring = np.vstack((total_offspring, offspring))
-
-        return total_offspring
-    '''
-
-    def crossover(self, parents):
-        total_offspring = np.zeros((0, self.n_vars))
-
-        for i in range(len(parents)):
-            p1 = parents[i]
-            if i == len(parents) - 1:
-                p2 = parents[0]
-            else:
-                p2 = parents[i+1]
-
-            # do recombination with 7111657556946844%
-            if np.random.uniform(0, 1) > 0.03197738791290694:
-                cross_prop = 0.5
-                offspring = p1 * cross_prop + p2 * (1 - cross_prop)
-                offspring = self.mutation(offspring)
-                total_offspring = np.vstack((total_offspring, offspring))
-                # continue
-            
-            # add mutated parent[i] with 25%
-            else:
-                offspring = self.mutation(p1)
-                total_offspring = np.vstack((total_offspring, offspring))
-            # else:  # add parent[i] with 25%
-            #     total_offspring = np.vstack((total_offspring, p1))
-                
-
-        return total_offspring
-
-    # def selection(self, new_population, static_fitness, ed, dynamic_fitness):
-    #     # Fitness stability
-    #     fitness = np.clip(dynamic_fitness, 1e-10, None)
-    #     probs = fitness / np.sum(fitness)
-
-    #     top_percent_count = max(1, int(0.05 * self.population_size))  # Ensure at least 1 individual is selected
-
-    #     sorted_indices = np.argsort(-ed)  # Negative sign for descending order (high ed first)
-
-    #     top_percent_indices = sorted_indices[:top_percent_count]
-    #     fitness_sorted_top = top_percent_indices[np.argsort(-fitness[top_percent_indices])]  # Negative for descending
-    #     sorted_indices[:top_percent_count] = fitness_sorted_top
-    #     # print("new pop defeated enemies", ed[sorted_indices][0:5], "dynamic fitness", dynamic_fitness[sorted_indices][0:5])
-
-    #     # Random selection for the rest of the population (excluding top 5%)
-    #     remaining_indices = np.random.choice(new_population.shape[0], 
-    #                                         self.population_size - top_percent_count, 
-    #                                         p=probs, replace=False)
-
-    #     chosen_indices = np.concatenate((top_percent_indices, remaining_indices))
-
-    #     pop = new_population[chosen_indices]
-    #     fit_pop = dynamic_fitness[chosen_indices]
-    #     stat_pop = static_fitness[chosen_indices]
-
-    #     return pop, fit_pop, stat_pop
-
-    def selection(self, new_population, new_fitness_population, new_static_fitness):
-        # TODO: REWRITE
-        fitness = np.clip(new_fitness_population, 1e-10, None)
-        probs = (fitness)/np.sum(fitness)
-        chosen = np.random.choice(new_population.shape[0], self.population_size , p=probs, replace=False)
-        pop = new_population[chosen]
-        fit_pop = new_fitness_population[chosen]
-        stat_pop = new_static_fitness[chosen]
-
-        return pop, fit_pop, stat_pop
-
     def train(self):
         # if no earlier training is done:
         if not os.path.exists(self.experiment_name+'/results.txt'):
-            # See if there is a run with 100 runs before continuing with 200
-            experiment_name2 = self.experiment_name.split("_")
-            experiment_name2[3] = "gens=100"
-            experiment_name2 = "_".join(experiment_name2)
-            if not os.path.exists(experiment_name2+'/results.txt'):
-
-                population = self.initialize()
-                self.generation_number = 0
-            else:
-                self.env = Environment(experiment_name=experiment_name2,
-                    enemies=[self.enemy_train],
-                    playermode="ai",
-                    player_controller=self.controller,
-                    enemymode="static",
-                    level=2,
-                    speed="fastest",
-                    visuals=False)
-                self.env.load_state()
-                population = self.env.solutions[0]
-                print(f"Found earlier state for: {self.experiment_name}")
-
-                self.env = Environment(experiment_name=self.experiment_name,
-                    enemies=[self.enemy_train],
-                    playermode="ai",
-                    player_controller=self.controller,
-                    enemymode="static",
-                    level=2,
-                    speed="fastest",
-                    visuals=False)
-
-                # find generation we left of at:
-                with open(experiment_name2 + '/results.txt', 'r') as f:
-                    for line in f:
-                        l = line
-                    self.generation_number = int(l.strip().split()[1][:-1]) + 1
-
-                if self.generation_number >= self.total_generations:
-                    print("\n\nAlready fully trained\n\n")
-                    return
-
+            print("hallo")
+            guess = self.initialize()
+            print(guess)
+            # guess = [0]*265
+            self.generation_number = 0
         else:
             print(f"Found earlier state for: {self.experiment_name}")
             self.env.load_state()
-            population = self.env.solutions[0]
+            guess = []
+            with open(self.experiment_name + '/best.txt', 'r') as f:
+                for l in f:
+                    guess.append(float(l))
 
             # find generation we left of at:
             with open(self.experiment_name + '/results.txt', 'r') as f:
                 for line in f:
                     l = line
-                self.generation_number = int(l.strip().split()[1][:-1]) + 1
+                self.generation_number = int(l.strip().split()[1]) + 1
 
             if self.generation_number >= self.total_generations:
                 print("\n\nAlready fully trained\n\n")
                 return
 
-            if self.mutation_type == 'correlated':
-                with np.load(self.experiment_name + '/CMA_params.npz') as CMA_params:
-                    self.p_sigma = CMA_params['p_sigma']
-                    self.p_c = CMA_params['p_c']
-                    self.C = CMA_params['C']
-                    self.m = list(CMA_params['m'])
+        es = cma.CMAEvolutionStrategy(guess, self.s_init, {'popsize': self.population_size, 'seed': self.seed})
 
-        # fitness_results = self.fitness_eval_stepwise(population)
-        fitness_results = self.fitness_func(population)
-        fitness_population, static_fitness = fitness_results[:, 0], fitness_results[:, -1]
-        # Evolution loop
         for gen_idx in tqdm.tqdm(range(self.generation_number, self.total_generations)):
             self.generation_number = gen_idx
-            # create parents
-            parents = dynamic_selection(population, fitness_population, self.generation_number+1)
+            population = np.array(es.ask())
+            fitness_results = self.fitness_func(population)
+            # fitness, ps, es, ts, enemies_defeated_number, static_fitness
+            static_fitness, fitness = fitness_results[:, -1], fitness_results[:, 0]
+            p, e = fitness_results[:, 1], fitness_results[:, 2]
+            # es.tell(list(population), list(-(p - e))) # MINUS BECAUSE CMA DOES MINIMALISATION
+            es.tell(list(population), list(-fitness)) # MINUS BECAUSE CMA DOES MINIMALISATION
+            # es.tell(list(population), list(-(static_fitness))) # MINUS BECAUSE CMA DOES MINIMALISATION
 
-            # create new population (consisting of offspring)
-            offspring = self.crossover(parents)
-
-            # new population
-            new_population = np.vstack((population, offspring))
-
-            # evaluate new population
-            new_fitness_results = self.fitness_func(offspring)
-            new_fitness_population = np.hstack((fitness_population, new_fitness_results[:, 0]))
-            new_static_fitness = np.hstack((static_fitness, new_fitness_results[:, -1]))
-
-            # select
-            population, fitness_population, static_fitness = self.selection(new_population, new_fitness_population, new_static_fitness)
-            # new_fitness_results = np.vstack((fitness_results, self.fitness_eval_stepwise(offspring)))  # dynamic_fitness, ps, es, ts, ed, static_fitness
-            # # new_fitness_population = np.hstack((fitness_population, new_fitness_results[:, 0]))
-            # # new_static_fitness = np.hstack((static_fitness, new_fitness_results[:, -1]))
-
-            # # select
-            # population, fitness_population, static_fitness = self.selection(new_population=new_population,
-            #                                                                 static_fitness=new_fitness_results[:, -1],
-            #                                                                 dynamic_fitness=new_fitness_results[:, 0],
-            #                                                                 ed=new_fitness_results[:, -2])
-
-            # save metrics for post-hoc evaluation
-            best = np.argmax(static_fitness)
-            mean = np.mean(static_fitness)
-            std  = np.std(static_fitness)
-
-            # if not self.intermediate_save:
-            #     with open(self.experiment_name + '/results.txt', 'a') as f:
-            #         # save as best, mean, std
-            #         print(f"Generation {gen_idx}: {static_fitness[best]:.5f} {mean:.5f} {std:.5f}" )
-            #         f.write(f"Generation {gen_idx}: {static_fitness[best]:.5f} {mean:.5f} {std:.5f}\n")
-
-            #     np.savetxt(self.experiment_name + '/best.txt', population[best])
-
-            #     if self.mutation_type == 'correlated':
-            #         np.savez(self.experiment_name + '/CMA_params.npz',
-            #                 p_sigma=self.p_sigma, p_c=self.p_c, C=self.C, m=self.m)
-            if not self.intermediate_save:
-                with open(self.experiment_name + '/results.txt', 'a') as f:
-                    # save as best, mean, std
-                    print(f"Generation {gen_idx}: {static_fitness[best]:.5f} {mean:.5f} {std:.5f}" )
-                    f.write(f"Generation {gen_idx}: {static_fitness[best]:.5f} {mean:.5f} {std:.5f}\n")
-
-                if self.mutation_type == "uncorrelated" and self.handin:
-                    _, params = population.shape
-                    np.savetxt(self.experiment_name + '/best.txt', population[best, :params - self.mutation_stepsize])
-                else:
-                    np.savetxt(self.experiment_name + '/best.txt', population[best])
-
-                if self.mutation_type == 'correlated':
-                    np.savez(self.experiment_name + '/CMA_params.npz',
-                            p_sigma=self.p_sigma, p_c=self.p_c, C=self.C, m=self.m)
-
-                if self.log_custom:
-                    # take best fitness from custom fitness population (does not need to be the best from baseline fitness population)
-                    best = np.argmax(fitness_population)
-                    mean = np.mean(fitness_population)
-                    std  = np.std(fitness_population)
-
-                    with open(self.experiment_name + '/custom_fitness_results.txt', 'a') as f:
-                        # print(f"Best Baseline Fitness wrt Custom Fitness Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}" )
-                        # f.write(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}\n")
-
-                        print(f"(Custom fitness) Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}" )
-                        f.write(f"Generation {gen_idx}: {fitness_population[best]:.5f} {mean:.5f} {std:.5f}\n")
-
-                    np.savetxt(self.experiment_name + '/custom_fitness_best.txt', population[best])
-
-            solutions = [population, static_fitness]
-            self.env.update_solutions(solutions)
-            self.env.save_state()
-
-            if self.mutation_type == "correlated":
-                # add mean for updating
-                self.m.append(np.mean(population, axis=0))
-                mean = self.m[-1]
-                prev_m = self.m[-2] if len(self.m) > 1 else mean
-
-                # update for CMA
-                self.update_evolution_paths(mean, prev_m, population)
+            best_idx = np.argmax(fitness)
+            print(f"(RUN {self.experiment_name.split('/')[-1][0:5]}): Static: {static_fitness[best_idx]:.4f}, dynamic: {fitness[best_idx]:.4f}, static mean: {static_fitness.mean():.4f}")            
+            
+            with open(self.experiment_name + '/results.txt', 'a') as f:
+                # save as best, mean, std
+                # print(f"Generation {gen_idx}: {static_fitness[best_idx]:.5f} {mean:.5f} {std:.5f}" )
+                f.write(f"Generation: {gen_idx} {static_fitness[best_idx]:.4f} {fitness[best_idx]:.4f} {static_fitness.mean():.4f} {static_fitness.std():.4f}\n")
+            
+            if fitness[best_idx] > self.best_fitness:
+                print(f"\nNEW BEST: {fitness[best_idx]}\n")
+                np.savetxt(self.experiment_name + '/best.txt', population[best_idx])
+                self.best_fitness = fitness[best_idx]
+            
 
     def parse_args(self):
         parser = argparse.ArgumentParser()
@@ -599,8 +363,10 @@ class Generalist():
         parser.add_argument('-g', '--gens', type=str, default='20,40,60,80', help='4 generation numbers to adjust fitness function weights over')
         parser.add_argument('-fe', '--fitness_epsilon', type=float, default=0.2, help="Lowest probability for term in fitness function is fitness_epsilon / 2 ")
 
+        parser.add_argument('-se', '--seed', type=int, default=1, help='seed')
 
         args = parser.parse_args()
+        self.seed = args.seed
         self.population_size = args.population_size
         self.total_generations = args.total_generations
         self.n_hidden_neurons = args.n_hidden_neurons
@@ -631,8 +397,8 @@ class Generalist():
             self.sigma = args.sigma_init_corr # Initial step size
 
         # usage check
-        if self.mutation_type == 'uncorrelated' and self.mutation_stepsize < 1:
-            parser.error("--mutation_stepsize must be >= 1 for uncorrelated mutation")
+        # if self.mutation_type == 'uncorrelated' and self.mutation_stepsize < 1:
+        #     parser.error("--mutation_stepsize must be >= 1 for uncorrelated mutation")
 
         # file name generation
         self.experiment_name = 'experiments/' + args.experiment_name
@@ -642,35 +408,12 @@ class Generalist():
         self.experiment_name += f'_hiddensize={self.n_hidden_neurons}'
         self.experiment_name += f'_u={self.upperbound}'
         self.experiment_name += f'_l={self.lowerbound}'
-        self.experiment_name += f'_mutationtype={self.mutation_type}'
-        self.experiment_name += f'_mutationprobability={self.mutation_probability}'
         self.experiment_name += f'_fitnessfunc={args.fitness_function}' #TODO idk if this messes up plot code
-
-
-        if self.mutation_type == 'uncorrelated':
-            self.experiment_name += f'_mutationstepsize={self.mutation_stepsize}'
-            self.experiment_name += f'_mutationthreshold={self.mutation_threshold}'
-            self.experiment_name += f'_sinit={self.s_init}'
-        elif self.mutation_type == 'correlated':
-            self.c_sigma = args.c_sigma  # Learning rate for the step-size path
-            self.c_c = args.c_c          # Learning rate for the covariance matrix path
-            self.c_1 = args.c_1          # Learning rate for the covariance matrix update
-            self.c_mu = args.c_mu        # Learning rate for the covariance matrix update
-            self.d_sigma = args.d_sigma  # Damping for the step-size update
-            self.sigma = args.sigma_init_corr # Initial step size
-
-            self.experiment_name += f'_csigma={self.c_sigma}'
-            self.experiment_name += f'_cc={self.c_c}'
-            self.experiment_name += f'_c1={self.c_1}'
-            self.experiment_name += f'_cmu={self.c_mu}'
-            self.experiment_name += f'_dsigma={self.d_sigma}'
-            self.experiment_name += f'_sigma={self.sigma}'
-
         if self.kaiming:
             self.experiment_name += f'_init=kaiming'
         else:
             self.experiment_name += f'_init=random'
-
+        self.experiment_name += f"_seed={self.seed}"
         if args.fitness_function == "steps":
             self.fitness_func = self.fitness_eval_stepwise
         elif args.fitness_function == "gradual":
@@ -681,43 +424,9 @@ class Generalist():
                 raise ValueError("Please provide 4 generation numbers to change weights over")
             if not 0 < args.fitness_epsilon <= 1:
                 raise ValueError("Please assign non-zero probability to args.fitness_epsilon")
-
+            self.fitness_epsilon = args.fitness_epsilon
             self._weights_fitness_gradual(gens=change_gens, epsilon=args.fitness_epsilon)
-
+            
         return
-
-    def test(self, type="individual gain"):
-        self.env.enemies = [self.enemy_test]
-        if self.visualise_best:
-            self.env.visuals = True 
-            self.env.speed = "normal" 
-            self.env.headless = False
-        else:
-            os.environ["SDL_VIDEODRIVER"] = "dummy"
-
-        best_individual_path = os.path.join(self.experiment_name, 'best.txt')
-        if not os.path.exists(best_individual_path):
-            raise FileNotFoundError(f"\n\nBest individual not found at {best_individual_path}, please set flag -t to train")
-
-        best_individual = np.loadtxt(best_individual_path)
-        if self.mutation_type == "uncorrelated":
-            shape = best_individual.shape
-            if shape[0] > 265:
-                best_individual = best_individual[:shape[0] - self.mutation_stepsize]
-
-        # Simulate the environment with the best individual
-        scores = []
-        for enemy in self.enemy_test:
-            self.env.enemies = [enemy]
-            if type == "fitness":
-                scores.append(self.simulation(best_individual)[0])
-                print(f"Fitness of the best individual against enemy {enemy}: {scores[-1]}")
-            elif type == "individual gain":
-                scores.append(self.individual_gain(best_individual))
-                print(f"Fitness of the best individual against enemy {enemy}: {scores[-1]}")
-            else:
-                raise NotImplementedError
-        return scores
-
 if __name__ == '__main__':
     specialist = Generalist()
