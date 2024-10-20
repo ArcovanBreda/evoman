@@ -11,8 +11,7 @@ for etr in "${etr_values[@]}"; do
     for i in {1..10}; do
         exp_name="run${i}"
         echo "Running experiment with: $exp_name and -etr: $etr"
-        # python generalist_hannah.py -k -m uncorrelated -ff gradual -ms 265 -t -exp "$exp_name" -etr "$etr" -ps 100 -tg 100 -hi -mp 0.3130 -s 0.08550 -g 29,40,64,70 -mt 0.6970&
-        python CMA.py -exp "$exp_name" -ps 100 -tg 1000 -k -s 0.2 -etr "$etr" -t -ff steps -se "$i"&
+        python generalist_group123.py -exp "$exp_name" -ps 100 -tg 300 -k -s 0.2 -etr "$etr" -t -ff steps -se "$i"&
         if (( $(jobs -r | wc -l) >= max_jobs )); then
             wait -n
         fi

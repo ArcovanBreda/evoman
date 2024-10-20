@@ -27,7 +27,7 @@ class Generalist():
                 level=2,
                 speed="fastest",
                 visuals=False,
-                multiplemode="yes", 
+                multiplemode="yes",
                 # logs="yes"
                 )
 
@@ -105,9 +105,6 @@ class Generalist():
         labels = ["Player energy", "Enemy energy", "Time"]
         colors = ["purple", "orange", "cyan"]
 
-        # plot weights for each term in fitness function
-        # for i in range(self.wfg.shape[0]):
-            # plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[i], label=labels[i], alpha=0.5)
         plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[1], label=labels[1], color=colors[1], alpha=0.4, linewidth=3)
         plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[0], label=labels[0], color=colors[0], alpha=0.4, linewidth=3)
         plt.plot(np.array(range(self.total_generations)) + 1, self.wfg[2], label=labels[2], color=colors[2], alpha=1)
@@ -197,13 +194,6 @@ class Generalist():
         enemies_defeated = enemies_defeated_number.count(max_enemies_defeated)
         print(f"{enemies_defeated} individuals have defeated {np.max(enemies_defeated_number)} enemies")
 
-        # max_enemies_defeated = np.max(enemies_defeated_total)
-        # enemies_defeated = enemies_defeated_total.count(max_enemies_defeated)
-        # enemies_defeated_total = np.array(enemies_defeated_total)
-
-        # # print number of defeated enemies
-        # print(f"{enemies_defeated} individuals have defeated  {max_enemies_defeated} enemies")
-
         # custom fitness function
         fitness = self.wfg[0, self.generation_number] * ps # player health
         + self.wfg[1, self.generation_number] * (100 - es) # enemy health, '100 - es' is same as in baseline fitness func
@@ -221,7 +211,6 @@ class Generalist():
         enemies_selected = np.array(self.enemy_train)-1
 
         # get all information
-        # static_fitness = self.get_mean(fs, [0, 1, 2, 3, 4, 5, 6, 7])
         static_fitness = self.get_mean(fs, enemies_selected)
         defeated = es[:, np.array(self.enemy_train)-1]
 
@@ -237,7 +226,6 @@ class Generalist():
         max_enemies_defeated = np.max(enemies_defeated_number)
         enemies_defeated = enemies_defeated_number.count(max_enemies_defeated)
         print(f"{enemies_defeated} individuals have defeated {np.max(enemies_defeated_number)} enemies")
-        # print(f"{np.max(enemies_defeated_number)} individuals have defeated  {np.max(enemies_defeated_number)} enemies")
 
         enemies_score = np.array([16, 18, 40, 50, 20, 12, 23, 22])  # e1': 16, 'e2': 18, 'e3': 40, 'e4': 50, 'e5': 20, 'e6': 12, 'e7': 23, 'e8': 22,
         enemies = [en - 1 for en in self.enemy_train]
@@ -247,14 +235,6 @@ class Generalist():
         return np.array([list(item) for item in zip(fitness, ps, es, ts, enemies_defeated_number, static_fitness)])
 
     def initialize(self):
-        data = []
-        with open(f"experiments/run{5}_popusize=100_enemy=[1, 2, 3, 4, 5, 6, 7, 8]_gens=1000_hiddensize=10_u=1_l=-1_fitnessfunc=steps_init=kaiming_seed={5}/best.txt") as f:
-            for line in f:
-                data.append(float(line))
-        data = np.array(data)
-        return data
-        # total_weights = np.tile(data, (self.population_size, 1)) + np.random.randn(self.population_size, 265) * 0.01
-
         if self.kaiming:
             n_actions = 5
             n_inputs = 20
@@ -271,20 +251,13 @@ class Generalist():
         else:
             total_weights = np.random.uniform(self.lowerbound, self.upperbound, (self.population_size, self.n_vars - self.mutation_stepsize))
 
-        if self.mutation_type == 'uncorrelated':
-            sigmas = np.ones((self.population_size, self.mutation_stepsize)) * self.s_init
-
-            return np.hstack((total_weights, sigmas))
-
         return total_weights
 
     def train(self):
         # if no earlier training is done:
         if not os.path.exists(self.experiment_name+'/results.txt'):
-            print("hallo")
-            guess = self.initialize()
+            guess = self.initialize()[0, :]
             print(guess)
-            # guess = [0]*265
             self.generation_number = 0
         else:
             print(f"Found earlier state for: {self.experiment_name}")
@@ -310,26 +283,21 @@ class Generalist():
             self.generation_number = gen_idx
             population = np.array(es.ask())
             fitness_results = self.fitness_func(population)
-            # fitness, ps, es, ts, enemies_defeated_number, static_fitness
             static_fitness, fitness = fitness_results[:, -1], fitness_results[:, 0]
-            p, e = fitness_results[:, 1], fitness_results[:, 2]
-            # es.tell(list(population), list(-(p - e))) # MINUS BECAUSE CMA DOES MINIMALISATION
             es.tell(list(population), list(-fitness)) # MINUS BECAUSE CMA DOES MINIMALISATION
-            # es.tell(list(population), list(-(static_fitness))) # MINUS BECAUSE CMA DOES MINIMALISATION
 
             best_idx = np.argmax(fitness)
             print(f"(RUN {self.experiment_name.split('/')[-1][0:5]}): Static: {static_fitness[best_idx]:.4f}, dynamic: {fitness[best_idx]:.4f}, static mean: {static_fitness.mean():.4f}")            
-            
+
             with open(self.experiment_name + '/results.txt', 'a') as f:
                 # save as best, mean, std
                 # print(f"Generation {gen_idx}: {static_fitness[best_idx]:.5f} {mean:.5f} {std:.5f}" )
                 f.write(f"Generation: {gen_idx} {static_fitness[best_idx]:.4f} {fitness[best_idx]:.4f} {static_fitness.mean():.4f} {static_fitness.std():.4f}\n")
-            
+
             if fitness[best_idx] > self.best_fitness:
                 print(f"\nNEW BEST: {fitness[best_idx]}\n")
                 np.savetxt(self.experiment_name + '/best.txt', population[best_idx])
                 self.best_fitness = fitness[best_idx]
-            
 
     def parse_args(self):
         parser = argparse.ArgumentParser()
@@ -396,10 +364,6 @@ class Generalist():
             self.d_sigma = args.d_sigma       # Damping for the step-size update
             self.sigma = args.sigma_init_corr # Initial step size
 
-        # usage check
-        # if self.mutation_type == 'uncorrelated' and self.mutation_stepsize < 1:
-        #     parser.error("--mutation_stepsize must be >= 1 for uncorrelated mutation")
-
         # file name generation
         self.experiment_name = 'experiments/' + args.experiment_name
         self.experiment_name += f'_popusize={self.population_size}'
@@ -410,9 +374,9 @@ class Generalist():
         self.experiment_name += f'_l={self.lowerbound}'
         self.experiment_name += f'_fitnessfunc={args.fitness_function}' #TODO idk if this messes up plot code
         if self.kaiming:
-            self.experiment_name += f'_init=kaiming'
+            self.experiment_name += '_init=kaiming'
         else:
-            self.experiment_name += f'_init=random'
+            self.experiment_name += '_init=random'
         self.experiment_name += f"_seed={self.seed}"
         if args.fitness_function == "steps":
             self.fitness_func = self.fitness_eval_stepwise
@@ -426,7 +390,7 @@ class Generalist():
                 raise ValueError("Please assign non-zero probability to args.fitness_epsilon")
             self.fitness_epsilon = args.fitness_epsilon
             self._weights_fitness_gradual(gens=change_gens, epsilon=args.fitness_epsilon)
-            
+
         return
 if __name__ == '__main__':
     specialist = Generalist()
